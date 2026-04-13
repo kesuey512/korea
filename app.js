@@ -14,11 +14,6 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-/**
- * =========================
- * 1. 先把这里替换成你自己的 Firebase 配置
- * =========================
- */
 const firebaseConfig = {
   apiKey: "AIzaSyB50lA92DSngs6y98PgK1thovNM4liPycU",
   authDomain: "korea-83b2a.firebaseapp.com",
@@ -29,11 +24,6 @@ const firebaseConfig = {
   measurementId: "G-W2MK1L42X0"
 };
 
-/**
- * =========================
- * 2. 基础配置
- * =========================
- */
 const INTERVALS = [0, 1, 2, 4, 7, 15, 30, 60];
 const LOCAL_WORDS_CACHE_KEY = "kr_words_cache_v1";
 const LOCAL_PROGRESS_CACHE_KEY = "kr_progress_local_cache_v2";
@@ -56,11 +46,6 @@ let auth = null;
 let db = null;
 let firebaseEnabled = true;
 
-/**
- * =========================
- * 3. DOM
- * =========================
- */
 const krEl = document.getElementById("kr");
 const cnEl = document.getElementById("cn");
 const dueEl = document.getElementById("due-count");
@@ -76,11 +61,6 @@ const knownBtn = document.getElementById("known-btn");
 const vagueBtn = document.getElementById("vague-btn");
 const unknownBtn = document.getElementById("unknown-btn");
 
-/**
- * =========================
- * 4. 工具函数
- * =========================
- */
 function nowTs() {
   return Date.now();
 }
@@ -221,11 +201,6 @@ function speak() {
   window.speechSynthesis.speak(msg);
 }
 
-/**
- * =========================
- * 5. Firebase 初始化
- * =========================
- */
 function initFirebase() {
   try {
     app = initializeApp(firebaseConfig);
@@ -238,11 +213,6 @@ function initFirebase() {
   }
 }
 
-/**
- * =========================
- * 6. 词库加载
- * =========================
- */
 async function loadWords() {
   setSyncMsg("正在加载词库...");
 
@@ -281,11 +251,6 @@ async function loadWords() {
   }
 }
 
-/**
- * =========================
- * 7. 云端同步
- * =========================
- */
 function getUserDocRef(uid) {
   return doc(db, "users", uid);
 }
@@ -345,11 +310,6 @@ async function syncAfterLogin(uid) {
   }
 }
 
-/**
- * =========================
- * 8. 登录
- * =========================
- */
 function bindAuthEvents() {
   loginBtn.addEventListener("click", async () => {
     if (!firebaseEnabled) {
@@ -413,11 +373,6 @@ function listenAuthState() {
   });
 }
 
-/**
- * =========================
- * 9. 背词逻辑
- * =========================
- */
 async function handleResult(result) {
   if (!currentWord) return;
 
@@ -458,11 +413,6 @@ async function handleResult(result) {
   }
 }
 
-/**
- * =========================
- * 10. 事件绑定
- * =========================
- */
 function bindStudyEvents() {
   showBtn.addEventListener("click", showTranslation);
   speakBtn.addEventListener("click", speak);
@@ -471,11 +421,6 @@ function bindStudyEvents() {
   unknownBtn.addEventListener("click", () => handleResult("unknown"));
 }
 
-/**
- * =========================
- * 11. 启动
- * =========================
- */
 async function startApp() {
   bindStudyEvents();
   bindAuthEvents();
