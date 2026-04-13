@@ -20,12 +20,13 @@ import {
  * =========================
  */
 const firebaseConfig = {
-  apiKey: "把这里改成你的 apiKey",
-  authDomain: "把这里改成你的 authDomain",
-  projectId: "把这里改成你的 projectId",
-  storageBucket: "把这里改成你的 storageBucket",
-  messagingSenderId: "把这里改成你的 messagingSenderId",
-  appId: "把这里改成你的 appId"
+  apiKey: "AIzaSyB50lA92DSngs6y98PgK1thovNM4liPycU",
+  authDomain: "korea-83b2a.firebaseapp.com",
+  projectId: "korea-83b2a",
+  storageBucket: "korea-83b2a.firebasestorage.app",
+  messagingSenderId: "559427597840",
+  appId: "1:559427597840:web:49f2decb6ff3753033fc95",
+  measurementId: "G-W2MK1L42X0"
 };
 
 /**
