@@ -3,182 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>延世韩语 - 艾宾浩斯记忆版</title>
+    <title>延世韩语背词</title>
     <style>
-        :root {
-            --primary: #6c5ce7;
-            --success: #00b894;
-            --warning: #fdcb6e;
-            --danger: #d63031;
-            --bg: #f0f2f5;
-            --card: #ffffff;
-            --text: #2d3436;
-            --muted: #636e72;
-            --line: #dfe6e9;
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
-            background: var(--bg);
-            margin: 0;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 16px;
-        }
-        .card {
-            background: var(--card);
-            width: 100%;
-            max-width: 380px;
-            padding: 24px 20px;
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            text-align: center;
-        }
-        .title { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
-        .status { margin-top: 6px; margin-bottom: 14px; font-size: 13px; color: #7f8c8d; line-height: 1.6; }
-        .kr { font-size: 42px; font-weight: bold; margin: 24px 0 14px; color: var(--text); word-break: break-word; }
-        .cn { font-size: 20px; color: var(--muted); min-height: 32px; margin-bottom: 18px; transition: 0.25s; opacity: 0; }
+        :root { --primary: #6c5ce7; --success: #00b894; --warning: #fdcb6e; --danger: #d63031; --bg: #f0f2f5; --card: #ffffff; --text: #2d3436; }
+        body { font-family: sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 16px; }
+        .card { background: var(--card); width: 100%; max-width: 360px; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
+        .kr { font-size: 42px; font-weight: bold; margin: 20px 0; color: var(--text); }
+        .cn { font-size: 20px; color: #636e72; min-height: 30px; margin-bottom: 20px; opacity: 0; transition: 0.2s; }
         .cn.show { opacity: 1; }
         .btn-group { display: flex; flex-direction: column; gap: 10px; }
-        button { border: none; padding: 13px 12px; border-radius: 12px; cursor: pointer; font-size: 16px; transition: 0.2s; }
-        button:active { transform: scale(0.98); }
+        button { border: none; padding: 12px; border-radius: 12px; cursor: pointer; font-size: 16px; }
         .btn-main { background: var(--primary); color: white; }
-        .btn-remember { background: var(--success); color: white; font-weight: bold; }
-        .btn-vague { background: var(--warning); color: #2d3436; font-weight: bold; }
-        .btn-forget { background: #ffeaea; color: var(--danger); font-weight: bold; }
-        .row { display: flex; gap: 10px; }
-        .row button { flex: 1; }
-        .divider { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
-        .badge { background: #dfe6e9; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-        .footer { margin-top: 14px; font-size: 12px; color: #95a5a6; line-height: 1.6; }
+        .btn-row { display: flex; gap: 8px; }
+        .btn-row button { flex: 1; font-weight: bold; color: white; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <div class="title">延世韩语背词</div>
-    <div id="unit-info" class="status">正在加载词库...</div>
-
+    <div style="font-size: 12px; color: #95a5a6;" id="info">正在初始化...</div>
     <div class="kr" id="kr">---</div>
     <div class="cn" id="cn">---</div>
 
     <div class="btn-group">
         <button class="btn-main" onclick="speak()">🔊 发音</button>
-        <button class="btn-main" onclick="showTranslation()">👁 查看翻译</button>
-        <hr class="divider">
-        <div class="row">
-            <button class="btn-remember" onclick="handleResult('known')">✅ 记住</button>
-            <button class="btn-vague" onclick="handleResult('vague')">😕 模糊</button>
-            <button class="btn-forget" onclick="handleResult('unknown')">❌ 忘记</button>
+        <button class="btn-main" onclick="document.getElementById('cn').classList.add('show')">👁 查看翻译</button>
+        <div class="btn-row">
+            <button style="background:var(--success)" onclick="handleResult(1)">✅ 记住</button>
+            <button style="background:var(--warning); color:#2d3436" onclick="handleResult(0.5)">😕 模糊</button>
+            <button style="background:var(--danger)" onclick="handleResult(0)">❌ 忘记</button>
         </div>
     </div>
-
-    <div class="status" style="margin-top:16px;">
-        待复习: <span id="due-count" class="badge">0</span>
-    </div>
-    <div class="footer">
-        规则：记住按曲线推进；模糊后天复习；忘记明天复习。
-    </div>
+    <div style="margin-top: 15px; font-size: 12px; color: #b2bec3;">待复习: <span id="due-count">0</span></div>
 </div>
 
 <script>
-    const INTERVALS = [0, 1, 2, 4, 7, 15, 30, 60];
-    const STORAGE_KEY = "kr_progress_v2";
-    let rawWords = []; 
-    let wordProgress = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-    let reviewQueue = [];
-    let currentWord = null;
+    // 单词库直接放在这里，排除文件加载问题
+    const rawWords = [
+        { kr: "안녕하세요", cn: "你好", unit: "U1" },
+        { kr: "선생님", cn: "老师", unit: "U1" },
+        { kr: "학생", cn: "学生", unit: "U1" },
+        { kr: "학교", cn: "学校", unit: "U2" },
+        { kr: "사과", cn: "苹果", unit: "U3" },
+        { kr: "공부하다", cn: "学习", unit: "U4" }
+    ];
 
-    const nowTs = () => Date.now();
-    const daysToMs = (days) => days * 24 * 60 * 60 * 1000;
-    const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+    const INTERVALS = [0, 1, 2, 4, 7, 15, 30];
+    let wordProgress = JSON.parse(localStorage.getItem('kr_v3')) || {};
+    let queue = [];
+    let current = null;
 
-    function getProgress(word) {
-        return wordProgress[word.kr] || { stage: 0, nextReview: 0, lastResult: "new" };
+    function init() {
+        const now = Date.now();
+        queue = rawWords.filter(w => !wordProgress[w.kr] || now >= wordProgress[w.kr].next);
+        queue.sort(() => Math.random() - 0.5);
+        render();
     }
 
-    async function initApp() {
-        try {
-            const response = await fetch('data.json');
-            rawWords = await response.json();
-            const now = nowTs();
-
-            reviewQueue = rawWords.filter(word => {
-                const data = getProgress(word);
-                return !data.nextReview || now >= data.nextReview;
-            });
-
-            shuffle(reviewQueue);
-            renderNext();
-        } catch (error) {
-            document.getElementById("kr").innerText = "加载失败";
-            document.getElementById("unit-info").innerText = "请检查 data.json 文件";
-        }
-    }
-
-    function renderNext() {
-        const krEl = document.getElementById("kr");
-        const cnEl = document.getElementById("cn");
-        const dueEl = document.getElementById("due-count");
-        const infoEl = document.getElementById("unit-info");
-
-        dueEl.innerText = reviewQueue.length;
-
-        if (reviewQueue.length === 0) {
-            currentWord = null;
-            krEl.innerText = "🎉";
-            cnEl.innerText = "任务已完成！";
-            cnEl.classList.add("show");
-            infoEl.innerHTML = `暂无待复习单词`;
+    function render() {
+        if (queue.length === 0) {
+            document.getElementById('kr').innerText = "🎉";
+            document.getElementById('cn').innerText = "今日打卡成功！";
+            document.getElementById('cn').classList.add('show');
             return;
         }
-
-        currentWord = reviewQueue[0];
-        const data = getProgress(currentWord);
-        krEl.innerText = currentWord.kr;
-        cnEl.innerText = currentWord.cn;
-        cnEl.classList.remove("show");
-
-        infoEl.innerHTML = `
-            <span class="badge">${currentWord.unit || "未分组"}</span>
-            <span class="badge">阶段 ${data.stage}</span>
-        `;
+        current = queue[0];
+        document.getElementById('kr').innerText = current.kr;
+        document.getElementById('cn').innerText = current.cn;
+        document.getElementById('cn').classList.remove('show');
+        document.getElementById('due-count').innerText = queue.length;
+        document.getElementById('info').innerText = current.unit;
     }
 
-    function showTranslation() { document.getElementById("cn").classList.add("show"); }
-
-    function handleResult(result) {
-        if (!currentWord) return;
-        const now = nowTs();
-        let data = getProgress(currentWord);
-
-        if (result === 'known') {
-            data.stage = Math.min(data.stage + 1, INTERVALS.length - 1);
-            data.nextReview = now + daysToMs(INTERVALS[data.stage]);
-        } else if (result === 'vague') {
-            data.nextReview = now + daysToMs(2);
-        } else {
-            data.stage = 0;
-            data.nextReview = now + daysToMs(1);
-        }
-        data.lastResult = result;
-        wordProgress[currentWord.kr] = data;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(wordProgress));
-        reviewQueue.shift();
-        renderNext();
+    function handleResult(score) {
+        if (!current) return;
+        let data = wordProgress[current.kr] || { stage: 0 };
+        
+        if (score === 1) data.stage = Math.min(data.stage + 1, 6);
+        else if (score === 0) data.stage = 0;
+        
+        const days = INTERVALS[data.stage];
+        data.next = Date.now() + (days || 1) * 24 * 60 * 60 * 1000;
+        
+        wordProgress[current.kr] = data;
+        localStorage.setItem('kr_v3', JSON.stringify(wordProgress));
+        queue.shift();
+        render();
     }
 
     function speak() {
-        if (!currentWord) return;
-        const msg = new SpeechSynthesisUtterance(currentWord.kr);
-        msg.lang = "ko-KR";
-        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(current.kr);
+        msg.lang = 'ko-KR';
         window.speechSynthesis.speak(msg);
     }
 
-    initApp();
+    init();
 </script>
 </body>
 </html>
