@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>延世韩语 - 艾宾浩斯记忆版</title>
+    <style>
+        :root {
+            --primary: #6c5ce7;
+            --success: #00b894;
+            --warning: #fdcb6e;
+            --danger: #d63031;
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --text: #2d3436;
+            --muted: #636e72;
+            --line: #dfe6e9;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+
+        .card {
+            background: var(--card);
+            width: 100%;
+            max-width: 380px;
+            padding: 24px 20px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            text-align: center;
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+
+        .status {
+            margin-top: 6px;
+            margin-bottom: 14px;
+            font-size: 13px;
+            color: #7f8c8d;
+            line-height: 1.6;
+        }
+
+        .kr {
+            font-size: 42px;
+            font-weight: bold;
+            margin: 24px 0 14px;
+            color: var(--text);
+            word-break: break-word;
+        }
+
+        .cn {
+            font-size: 20px;
+            color: var(--muted);
+            min-height: 32px;
+            margin-bottom: 18px;
+            transition: 0.25s;
+            opacity: 0;
+        }
+
+        .cn.show {
+            opacity: 1;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        button {
+            border: none;
+            padding: 13px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: 0.2s;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .btn-main {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-remember {
+            background: var(--success);
+            color: white;
+            font-weight: bold;
+        }
+
+        .btn-vague {
+            background: var(--warning);
+            color: #2d3436;
+            font-weight: bold;
+        }
+
+        .btn-forget {
+            background: #ffeaea;
+            color: var(--danger);
+            font-weight: bold;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .row button {
+            flex: 1;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid var(--line);
+            margin: 4px 0;
+        }
+
+        .badge {
+            background: #dfe6e9;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        .footer {
+            margin-top: 14px;
+            font-size: 12px;
+            color: #95a5a6;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="title">延世韩语背词</div>
+    <div id="unit-info" class="status">正在初始化...</div>
+
+    <div class="kr" id="kr">---</div>
+    <div class="cn" id="cn">---</div>
+
+    <div class="btn-group">
+        <button class="btn-main" onclick="speak()">🔊 发音</button>
+        <button class="btn-main" onclick="showTranslation()">👁 查看翻译</button>
+
+        <hr class="divider">
+
+        <div class="row">
+            <button class="btn-remember" onclick="handleResult('known')">✅ 记住了</button>
+            <button class="btn-vague" onclick="handleResult('vague')">😕 模糊</button>
+            <button class="btn-forget" onclick="handleResult('unknown')">❌ 不认识</button>
+        </div>
+    </div>
+
+    <div class="status" style="margin-top:16px;">
+        今日待复习: <span id="due-count" class="badge">0</span>
+    </div>
+
+    <div class="footer">
+        规则：记住了按艾宾浩斯推进；模糊后天复习；不认识明天复习。
+    </div>
+</div>
+
+<script>
+    // 艾宾浩斯式间隔（单位：天）
+    // stage=0 表示新词 / 重置状态
+    const INTERVALS = [0, 1, 2, 4, 7, 15, 30, 60];
+
+    // 示例词库：后续你可以直接继续往这里加
+    const rawWords = [
+        { kr: "학교", cn: "学校", unit: "1-1" },
+        { kr: "사과", cn: "苹果", unit: "1-1" },
+        { kr: "선생님", cn: "老师", unit: "1-1" },
+        { kr: "공부하다", cn: "学习", unit: "1-2" },
+        { kr: "친구", cn: "朋友", unit: "1-2" },
+        { kr: "학생", cn: "学生", unit: "1-2" }
+    ];
+
+    const STORAGE_KEY = "kr_progress_v2";
+
+    let wordProgress = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+    let reviewQueue = [];
+    let currentWord = null;
+
+    function nowTs() {
+        return Date.now();
+    }
+
+    function daysToMs(days) {
+        return days * 24 * 60 * 60 * 1000;
+    }
+
+    function shuffle(arr) {
+        return arr.sort(() => Math.random() - 0.5);
+    }
+
+    function getProgress(word) {
+        return wordProgress[word.kr] || {
+            stage: 0,
+            nextReview: 0,
+            lastResult: "new"
+        };
+    }
+
+    function saveProgress() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(wordProgress));
+    }
+
+    function initApp() {
+        const now = nowTs();
+
+        reviewQueue = rawWords.filter(word => {
+            const data = getProgress(word);
+            return !data.nextReview || now >= data.nextReview;
+        });
+
+        shuffle(reviewQueue);
+        renderNext();
+    }
+
+    function renderNext() {
+        const krEl = document.getElementById("kr");
+        const cnEl = document.getElementById("cn");
+        const dueEl = document.getElementById("due-count");
+        const infoEl = document.getElementById("unit-info");
+
+        dueEl.innerText = reviewQueue.length;
+
+        if (reviewQueue.length === 0) {
+            currentWord = null;
+            krEl.innerText = "🎉";
+            cnEl.innerText = "今日任务已完成！";
+            cnEl.classList.add("show");
+            infoEl.innerHTML = `今天没有需要复习的新词或旧词`;
+            return;
+        }
+
+        currentWord = reviewQueue[0];
+        const data = getProgress(currentWord);
+
+        krEl.innerText = currentWord.kr;
+        cnEl.innerText = currentWord.cn;
+        cnEl.classList.remove("show");
+
+        infoEl.innerHTML = `
+            单元：<span class="badge">${currentWord.unit || "未分组"}</span>
+            &nbsp; 阶段：<span class="badge">${data.stage}</span>
+            &nbsp; 上次结果：<span class="badge">${formatResult(data.lastResult)}</span>
+        `;
+    }
+
+    function formatResult(result) {
+        if (result === "known") return "记住了";
+        if (result === "vague") return "模糊";
+        if (result === "unknown") return "不认识";
+        return "新词";
+    }
+
+    function showTranslation() {
+        document.getElementById("cn").classList.add("show");
+    }
+
+    function handleResult(result) {
+        if (!currentWord) return;
+
+        const now = nowTs();
+        let data = getProgress(currentWord);
+
+        if (result === "known") {
+            // 记住了：阶段 +1，并按该阶段间隔复习
+            data.stage = Math.min(data.stage + 1, INTERVALS.length - 1);
+            const days = INTERVALS[data.stage];
+            data.nextReview = now + daysToMs(days);
+            data.lastResult = "known";
+        } else if (result === "vague") {
+            // 模糊：后天复习，阶段不变
+            data.nextReview = now + daysToMs(2);
+            data.lastResult = "vague";
+        } else if (result === "unknown") {
+            // 不认识：明天复习，阶段重置
+            data.stage = 0;
+            data.nextReview = now + daysToMs(1);
+            data.lastResult = "unknown";
+        }
+
+        wordProgress[currentWord.kr] = data;
+        saveProgress();
+
+        reviewQueue.shift();
+        renderNext();
+    }
+
+    function speak() {
+        if (!currentWord) return;
+        const msg = new SpeechSynthesisUtterance(currentWord.kr);
+        msg.lang = "ko-KR";
+        msg.rate = 0.9;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(msg);
+    }
+
+    initApp();
+</script>
+</body>
+</html>
