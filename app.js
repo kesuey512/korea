@@ -27,7 +27,7 @@ const firebaseConfig = {
 const INTERVALS = [0, 1, 2, 4, 7, 15, 30, 60];
 
 const LOCAL_WORDS_CACHE_KEY = "kr_words_cache_v1";
-const LOCAL_PROGRESS_CACHE_KEY = "kr_progress_local_cache_v4";
+const LOCAL_PROGRESS_CACHE_KEY = "kr_progress_local_cache_v5";
 const LOCAL_STUDY_SETTINGS_KEY = "kr_study_settings_v2";
 
 const DEFAULT_PROGRESS = {
@@ -68,6 +68,9 @@ const showBtn = document.getElementById("show-btn");
 const knownBtn = document.getElementById("known-btn");
 const vagueBtn = document.getElementById("vague-btn");
 const unknownBtn = document.getElementById("unknown-btn");
+
+const resetCurrentBtn = document.getElementById("reset-current-btn");
+const resetAllBtn = document.getElementById("reset-all-btn");
 
 const studyModeEl = document.getElementById("study-mode");
 const unitSelectEl = document.getElementById("unit-select");
@@ -460,6 +463,68 @@ async function syncAfterLogin(uid) {
   }
 }
 
+function getCurrentContextPrefix() {
+  return `${getProgressContext()}::`;
+}
+
+function resetCurrentModeProgressLocal() {
+  const prefix = getCurrentContextPrefix();
+  const nextProgress = {};
+
+  for (const [key, value] of Object.entries(wordProgress)) {
+    if (!key.startsWith(prefix)) {
+      nextProgress[key] = value;
+    }
+  }
+
+  wordProgress = nextProgress;
+  saveLocalProgressCache();
+}
+
+function resetAllProgressLocal() {
+  wordProgress = {};
+  saveLocalProgressCache();
+}
+
+async function afterResetSync(message) {
+  hideMeaningImmediately();
+  buildReviewQueue();
+  renderNext();
+  restoreMeaningTransition();
+
+  if (currentUser && firebaseEnabled) {
+    try {
+      setSyncMsg("正在同步重置结果到云端...");
+      await saveCloudProgress(currentUser.uid);
+      setSyncMsg(message + "（已同步到云端）");
+    } catch (err) {
+      console.error(err);
+      setSyncMsg(message + "，但云端同步失败。");
+    }
+  } else {
+    setSyncMsg(message);
+  }
+}
+
+function bindResetEvents() {
+  resetCurrentBtn.addEventListener("click", async () => {
+    const context = getProgressContext();
+    const ok = window.confirm(`确定要重置当前模式进度吗？\n当前模式：${context}`);
+    if (!ok) return;
+
+    resetCurrentModeProgressLocal();
+    await afterResetSync("当前模式进度已重置。");
+  });
+
+  resetAllBtn.addEventListener("click", async () => {
+    const ok = window.confirm("确定要重置全部进度吗？此操作会清空当前浏览器中的所有学习记录。");
+    if (!ok) return;
+
+    resetAllProgressLocal();
+    await afterResetSync("全部进度已重置。");
+  });
+}
+
 function bindAuthEvents() {
   loginBtn.addEventListener("click", async () => {
     if (!firebaseEnabled) {
@@ -617,6 +682,7 @@ async function startApp() {
   bindStudyEvents();
   bindAuthEvents();
   bindStudyModeEvents();
+  bindResetEvents();
   initFirebase();
   await loadWords();
   listenAuthState();
