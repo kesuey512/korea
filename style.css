@@ -104,7 +104,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin: 10px 0 14px;
+  margin: 10px 0 12px;
   text-align: left;
 }
 
@@ -133,6 +133,33 @@ body {
 .control-group select:disabled {
   background: #f7f7f7;
   color: #9aa1a7;
+}
+
+.reset-controls {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.btn-reset-current,
+.btn-reset-all {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.btn-reset-current {
+  background: #fff6df;
+  color: #8a6200;
+}
+
+.btn-reset-all {
+  background: #ffeaea;
+  color: var(--danger);
 }
 
 .status-panel {
@@ -310,5 +337,9 @@ button:active {
 
   .status-count {
     font-size: 20px;
+  }
+
+  .reset-controls {
+    flex-direction: column;
   }
 }
