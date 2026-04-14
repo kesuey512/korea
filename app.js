@@ -259,6 +259,25 @@ function buildReviewQueue() {
   updateStatusCounts();
 }
 
+function formatMeaning(word) {
+  if (word.pos && word.pos.trim()) {
+    return `[${word.pos}] ${word.cn}`;
+  }
+  return word.cn;
+}
+
+function hideMeaningImmediately() {
+  cnEl.classList.remove("show");
+  cnEl.style.transition = "none";
+  void cnEl.offsetHeight;
+}
+
+function restoreMeaningTransition() {
+  requestAnimationFrame(() => {
+    cnEl.style.transition = "";
+  });
+}
+
 function renderNext() {
   dueEl.innerText = String(reviewQueue.length);
 
@@ -277,8 +296,7 @@ function renderNext() {
   const masteredText = isMastered(data) ? ' &nbsp; 掌握：<span class="badge">已掌握</span>' : '';
 
   krEl.innerText = currentWord.kr;
-  cnEl.innerText = currentWord.cn;
-  cnEl.classList.remove("show");
+  cnEl.innerText = formatMeaning(currentWord);
 
   infoEl.innerHTML = `
     单元：<span class="badge">${currentWord.unit}</span>
@@ -508,6 +526,8 @@ function listenAuthState() {
 async function handleResult(result) {
   if (!currentWord) return;
 
+  hideMeaningImmediately();
+
   const now = nowTs();
   const data = { ...getProgress(currentWord) };
 
@@ -540,6 +560,7 @@ async function handleResult(result) {
   reviewQueue.shift();
   buildReviewQueue();
   renderNext();
+  restoreMeaningTransition();
 
   if (currentUser && firebaseEnabled) {
     try {
@@ -577,14 +598,18 @@ function bindStudyModeEvents() {
     }
 
     saveStudySettings();
+    hideMeaningImmediately();
     buildReviewQueue();
     renderNext();
+    restoreMeaningTransition();
   });
 
   unitSelectEl.addEventListener("change", () => {
     saveStudySettings();
+    hideMeaningImmediately();
     buildReviewQueue();
     renderNext();
+    restoreMeaningTransition();
   });
 }
 
