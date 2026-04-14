@@ -199,11 +199,14 @@ body {
   font-size: 20px;
   color: var(--muted);
   opacity: 0;
-  transition: 0.25s;
+  transition: opacity 0.2s ease;
+  line-height: 1.5;
+  visibility: hidden;
 }
 
 .cn.show {
   opacity: 1;
+  visibility: visible;
 }
 
 .btn-group {
