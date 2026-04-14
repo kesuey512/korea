@@ -27,8 +27,8 @@ const firebaseConfig = {
 const INTERVALS = [0, 1, 2, 4, 7, 15, 30, 60];
 
 const LOCAL_WORDS_CACHE_KEY = "kr_words_cache_v1";
-const LOCAL_PROGRESS_CACHE_KEY = "kr_progress_local_cache_v3";
-const LOCAL_STUDY_SETTINGS_KEY = "kr_study_settings_v1";
+const LOCAL_PROGRESS_CACHE_KEY = "kr_progress_local_cache_v4";
+const LOCAL_STUDY_SETTINGS_KEY = "kr_study_settings_v2";
 
 const DEFAULT_PROGRESS = {
   stage: 0,
@@ -110,18 +110,6 @@ function isValidWord(item) {
     safeString(item.unit).trim();
 }
 
-function getProgress(word) {
-  return wordProgress[word.id] || { ...DEFAULT_PROGRESS };
-}
-
-function isMastered(progress) {
-  return Boolean(progress.mastered || (progress.knownStreak || 0) >= 3);
-}
-
-function isNewWord(progress) {
-  return !progress.lastResult || progress.lastResult === "new";
-}
-
 function saveLocalProgressCache() {
   localStorage.setItem(LOCAL_PROGRESS_CACHE_KEY, JSON.stringify(wordProgress));
 }
@@ -168,20 +156,51 @@ function loadStudySettings() {
 function mergeProgress(localData, cloudData) {
   const merged = { ...localData };
 
-  for (const [wordId, cloudValue] of Object.entries(cloudData || {})) {
-    const localValue = merged[wordId];
+  for (const [progressKey, cloudValue] of Object.entries(cloudData || {})) {
+    const localValue = merged[progressKey];
     if (!localValue) {
-      merged[wordId] = cloudValue;
+      merged[progressKey] = cloudValue;
       continue;
     }
 
     const localUpdated = Number(localValue.updatedAt || 0);
     const cloudUpdated = Number(cloudValue.updatedAt || 0);
 
-    merged[wordId] = cloudUpdated >= localUpdated ? cloudValue : localValue;
+    merged[progressKey] = cloudUpdated >= localUpdated ? cloudValue : localValue;
   }
 
   return merged;
+}
+
+function getProgressContext() {
+  const mode = studyModeEl.value;
+  const selectedUnit = unitSelectEl.value;
+
+  if (mode === "unit") {
+    if (selectedUnit && selectedUnit !== "__all__") {
+      return `unit:${selectedUnit}`;
+    }
+    return "unit:__all__";
+  }
+
+  return "all";
+}
+
+function getProgressKey(word) {
+  return `${getProgressContext()}::${word.id}`;
+}
+
+function getProgress(word) {
+  const key = getProgressKey(word);
+  return wordProgress[key] || { ...DEFAULT_PROGRESS };
+}
+
+function isMastered(progress) {
+  return Boolean(progress.mastered || (progress.knownStreak || 0) >= 3);
+}
+
+function isNewWord(progress) {
+  return !progress.lastResult || progress.lastResult === "new";
 }
 
 function getFilteredWords() {
@@ -254,6 +273,7 @@ function renderNext() {
 
   currentWord = reviewQueue[0];
   const data = getProgress(currentWord);
+  const contextText = getProgressContext();
   const masteredText = isMastered(data) ? ' &nbsp; 掌握：<span class="badge">已掌握</span>' : '';
 
   krEl.innerText = currentWord.kr;
@@ -264,6 +284,7 @@ function renderNext() {
     单元：<span class="badge">${currentWord.unit}</span>
     &nbsp; 阶段：<span class="badge">${data.stage}</span>
     &nbsp; 连续记住：<span class="badge">${data.knownStreak || 0}</span>
+    &nbsp; 模式进度：<span class="badge">${contextText}</span>
     ${masteredText}
   `;
 }
@@ -512,7 +533,8 @@ async function handleResult(result) {
   data.lastResult = result;
   data.updatedAt = now;
 
-  wordProgress[currentWord.id] = data;
+  const key = getProgressKey(currentWord);
+  wordProgress[key] = data;
   saveLocalProgressCache();
 
   reviewQueue.shift();
@@ -544,6 +566,16 @@ function bindStudyEvents() {
 function bindStudyModeEvents() {
   studyModeEl.addEventListener("change", () => {
     updateUnitSelectState();
+
+    if (studyModeEl.value === "unit" && unitSelectEl.value === "__all__") {
+      const firstRealUnit = [...unitSelectEl.options]
+        .map(opt => opt.value)
+        .find(v => v !== "__all__");
+      if (firstRealUnit) {
+        unitSelectEl.value = firstRealUnit;
+      }
+    }
+
     saveStudySettings();
     buildReviewQueue();
     renderNext();
