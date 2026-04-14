@@ -22,6 +22,38 @@
 
     <div id="sync-msg" class="sync-msg">正在初始化...</div>
 
+    <div class="study-controls">
+      <div class="control-group">
+        <label for="study-mode">背诵模式</label>
+        <select id="study-mode">
+          <option value="all">全部乱序</option>
+          <option value="unit">按单元背诵</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="unit-select">选择单元</label>
+        <select id="unit-select">
+          <option value="__all__">全部单元</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="status-panel">
+      <div class="status-box status-learn">
+        <div class="status-label">待学习</div>
+        <div id="learn-count" class="status-count">0</div>
+      </div>
+      <div class="status-box status-review">
+        <div class="status-label">待复习</div>
+        <div id="review-count" class="status-count">0</div>
+      </div>
+      <div class="status-box status-mastered">
+        <div class="status-label">已掌握</div>
+        <div id="mastered-count" class="status-count">0</div>
+      </div>
+    </div>
+
     <div id="unit-info" class="status">正在加载词库...</div>
 
     <div class="kr" id="kr">---</div>
@@ -41,11 +73,12 @@
     </div>
 
     <div class="status status-bottom">
-      待复习: <span id="due-count" class="badge">0</span>
+      当前队列: <span id="due-count" class="badge">0</span>
     </div>
 
     <div class="footer">
       规则：记住按曲线推进；模糊 2 天后复习；忘记 1 天后复习。<br />
+      连续 3 次记住记为“已掌握”，但到期后仍继续复习。<br />
       已登录时可跨设备同步；未登录时仅保存在本机。
     </div>
   </div>
