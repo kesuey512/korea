@@ -25,14 +25,18 @@ const firebaseConfig = {
 };
 
 const INTERVALS = [0, 1, 2, 4, 7, 15, 30, 60];
+
 const LOCAL_WORDS_CACHE_KEY = "kr_words_cache_v1";
-const LOCAL_PROGRESS_CACHE_KEY = "kr_progress_local_cache_v2";
+const LOCAL_PROGRESS_CACHE_KEY = "kr_progress_local_cache_v3";
+const LOCAL_STUDY_SETTINGS_KEY = "kr_study_settings_v1";
 
 const DEFAULT_PROGRESS = {
   stage: 0,
   nextReview: 0,
   lastResult: "new",
-  updatedAt: 0
+  updatedAt: 0,
+  knownStreak: 0,
+  mastered: false
 };
 
 let words = [];
@@ -53,6 +57,10 @@ const infoEl = document.getElementById("unit-info");
 const syncMsgEl = document.getElementById("sync-msg");
 const userStatusEl = document.getElementById("user-status");
 
+const learnCountEl = document.getElementById("learn-count");
+const reviewCountEl = document.getElementById("review-count");
+const masteredCountEl = document.getElementById("mastered-count");
+
 const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const speakBtn = document.getElementById("speak-btn");
@@ -60,6 +68,9 @@ const showBtn = document.getElementById("show-btn");
 const knownBtn = document.getElementById("known-btn");
 const vagueBtn = document.getElementById("vague-btn");
 const unknownBtn = document.getElementById("unknown-btn");
+
+const studyModeEl = document.getElementById("study-mode");
+const unitSelectEl = document.getElementById("unit-select");
 
 function nowTs() {
   return Date.now();
@@ -103,6 +114,14 @@ function getProgress(word) {
   return wordProgress[word.id] || { ...DEFAULT_PROGRESS };
 }
 
+function isMastered(progress) {
+  return Boolean(progress.mastered || (progress.knownStreak || 0) >= 3);
+}
+
+function isNewWord(progress) {
+  return !progress.lastResult || progress.lastResult === "new";
+}
+
 function saveLocalProgressCache() {
   localStorage.setItem(LOCAL_PROGRESS_CACHE_KEY, JSON.stringify(wordProgress));
 }
@@ -129,6 +148,23 @@ function loadLocalWordsCache() {
   }
 }
 
+function saveStudySettings() {
+  const settings = {
+    mode: studyModeEl.value,
+    selectedUnit: unitSelectEl.value
+  };
+  localStorage.setItem(LOCAL_STUDY_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function loadStudySettings() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STUDY_SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : { mode: "all", selectedUnit: "__all__" };
+  } catch {
+    return { mode: "all", selectedUnit: "__all__" };
+  }
+}
+
 function mergeProgress(localData, cloudData) {
   const merged = { ...localData };
 
@@ -148,15 +184,60 @@ function mergeProgress(localData, cloudData) {
   return merged;
 }
 
+function getFilteredWords() {
+  const mode = studyModeEl.value;
+  const selectedUnit = unitSelectEl.value;
+
+  if (mode === "unit" && selectedUnit !== "__all__") {
+    return words.filter(word => word.unit === selectedUnit);
+  }
+
+  return words;
+}
+
+function updateStatusCounts() {
+  const now = nowTs();
+  const filteredWords = getFilteredWords();
+
+  let learnCount = 0;
+  let reviewCount = 0;
+  let masteredCount = 0;
+
+  filteredWords.forEach(word => {
+    const progress = getProgress(word);
+    const due = !progress.nextReview || now >= progress.nextReview;
+    const mastered = isMastered(progress);
+    const isNew = isNewWord(progress);
+
+    if (mastered) {
+      masteredCount += 1;
+    }
+
+    if (due) {
+      if (isNew) {
+        learnCount += 1;
+      } else {
+        reviewCount += 1;
+      }
+    }
+  });
+
+  learnCountEl.textContent = String(learnCount);
+  reviewCountEl.textContent = String(reviewCount);
+  masteredCountEl.textContent = String(masteredCount);
+}
+
 function buildReviewQueue() {
   const now = nowTs();
+  const filteredWords = getFilteredWords();
 
-  reviewQueue = words.filter((word) => {
+  reviewQueue = filteredWords.filter((word) => {
     const data = getProgress(word);
     return !data.nextReview || now >= data.nextReview;
   });
 
   reviewQueue = shuffle(reviewQueue);
+  updateStatusCounts();
 }
 
 function renderNext() {
@@ -165,14 +246,15 @@ function renderNext() {
   if (reviewQueue.length === 0) {
     currentWord = null;
     krEl.innerText = "🎉";
-    cnEl.innerText = "任务已完成！";
+    cnEl.innerText = "当前模式下没有到期词汇";
     cnEl.classList.add("show");
-    infoEl.innerHTML = `今天没有待复习词汇`;
+    infoEl.innerHTML = `今天先到这里`;
     return;
   }
 
   currentWord = reviewQueue[0];
   const data = getProgress(currentWord);
+  const masteredText = isMastered(data) ? ' &nbsp; 掌握：<span class="badge">已掌握</span>' : '';
 
   krEl.innerText = currentWord.kr;
   cnEl.innerText = currentWord.cn;
@@ -181,6 +263,8 @@ function renderNext() {
   infoEl.innerHTML = `
     单元：<span class="badge">${currentWord.unit}</span>
     &nbsp; 阶段：<span class="badge">${data.stage}</span>
+    &nbsp; 连续记住：<span class="badge">${data.knownStreak || 0}</span>
+    ${masteredText}
   `;
 }
 
@@ -199,6 +283,31 @@ function speak() {
   msg.lang = "ko-KR";
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(msg);
+}
+
+function updateUnitSelectState() {
+  unitSelectEl.disabled = studyModeEl.value !== "unit";
+}
+
+function initUnitOptions() {
+  const units = [...new Set(words.map(word => word.unit))];
+
+  unitSelectEl.innerHTML = '<option value="__all__">全部单元</option>';
+
+  units.forEach(unit => {
+    const option = document.createElement("option");
+    option.value = unit;
+    option.textContent = unit;
+    unitSelectEl.appendChild(option);
+  });
+
+  const settings = loadStudySettings();
+  studyModeEl.value = settings.mode || "all";
+
+  const unitExists = units.includes(settings.selectedUnit);
+  unitSelectEl.value = unitExists ? settings.selectedUnit : "__all__";
+
+  updateUnitSelectState();
 }
 
 function initFirebase() {
@@ -234,6 +343,7 @@ async function loadWords() {
 
     words = validWords;
     saveLocalWordsCache(validWords);
+    initUnitOptions();
     setSyncMsg(`词库加载完成，共 ${validWords.length} 个词条。`);
   } catch (err) {
     console.error(err);
@@ -241,6 +351,7 @@ async function loadWords() {
 
     if (Array.isArray(fallbackWords) && fallbackWords.length > 0) {
       words = fallbackWords.filter(isValidWord);
+      initUnitOptions();
       setSyncMsg("data.json 读取失败，已改用本地缓存词库。");
       return;
     }
@@ -383,11 +494,19 @@ async function handleResult(result) {
     data.stage = Math.min(data.stage + 1, INTERVALS.length - 1);
     const days = INTERVALS[data.stage];
     data.nextReview = now + daysToMs(days);
+    data.knownStreak = (data.knownStreak || 0) + 1;
+    if (data.knownStreak >= 3) {
+      data.mastered = true;
+    }
   } else if (result === "vague") {
     data.nextReview = now + daysToMs(2);
+    data.knownStreak = 0;
+    data.mastered = false;
   } else {
     data.stage = 0;
     data.nextReview = now + daysToMs(1);
+    data.knownStreak = 0;
+    data.mastered = false;
   }
 
   data.lastResult = result;
@@ -397,6 +516,7 @@ async function handleResult(result) {
   saveLocalProgressCache();
 
   reviewQueue.shift();
+  buildReviewQueue();
   renderNext();
 
   if (currentUser && firebaseEnabled) {
@@ -421,9 +541,25 @@ function bindStudyEvents() {
   unknownBtn.addEventListener("click", () => handleResult("unknown"));
 }
 
+function bindStudyModeEvents() {
+  studyModeEl.addEventListener("change", () => {
+    updateUnitSelectState();
+    saveStudySettings();
+    buildReviewQueue();
+    renderNext();
+  });
+
+  unitSelectEl.addEventListener("change", () => {
+    saveStudySettings();
+    buildReviewQueue();
+    renderNext();
+  });
+}
+
 async function startApp() {
   bindStudyEvents();
   bindAuthEvents();
+  bindStudyModeEvents();
   initFirebase();
   await loadWords();
   listenAuthState();
