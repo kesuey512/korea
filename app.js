@@ -8,14 +8,12 @@ const INTERVALS = [0, 1, 2, 4, 7];
 
 const krEl = document.getElementById("kr");
 const cnEl = document.getElementById("cn");
-const infoEl = document.getElementById("info");
-
-const learnCountEl = document.getElementById("learnCount");
-const reviewCountEl = document.getElementById("reviewCount");
-const masteredCountEl = document.getElementById("masteredCount");
-
-const modeSelect = document.getElementById("mode");
-const unitSelect = document.getElementById("unitSelect");
+const modeSelect = document.getElementById("study-mode");
+const unitSelect = document.getElementById("unit-select");
+const learnCountEl = document.getElementById("learn-count");
+const reviewCountEl = document.getElementById("review-count");
+const masteredCountEl = document.getElementById("mastered-count");
+const infoEl = document.getElementById("unit-info");
 
 
 // ===== 时间工具 =====
