@@ -67,7 +67,7 @@ function getFilteredWords() {
 }
 
 
-// ===== 进度key（分模式）=====
+// ===== 进度key =====
 function getKey(word) {
   return modeSelect.value + "_" + word.id;
 }
@@ -82,7 +82,10 @@ function getProgress(word) {
       stage: 0,
       nextReview: todayStart(),
       knownStreak: 0,
-      mastered: false
+      mastered: false,
+      todayCount: 0,
+      lastReviewedDay: null,
+      lastResult: null
     };
   }
 
@@ -90,18 +93,26 @@ function getProgress(word) {
 }
 
 
-// ===== 构建队列 =====
+// ===== 构建队列（核心修复）=====
 function buildQueue() {
   const now = todayStart();
 
   reviewQueue = getFilteredWords().filter(w => {
     const p = getProgress(w);
 
-    if (p.lastReviewedDay === now) return false;
+    // 初始化 todayCount（防旧数据）
+    if (p.todayCount === undefined) p.todayCount = 0;
 
-    return !p.nextReview || now >= p.nextReview;
+    // ===== 当天最多出现2次 =====
+    if (p.lastReviewedDay === now && p.todayCount >= 2) return false;
+
+    const isNew = !p.lastResult;
+    const due = !p.nextReview || now >= p.nextReview;
+
+    return isNew || due;
   });
 
+  // 打乱
   reviewQueue.sort(() => Math.random() - 0.5);
 
   updateCounts();
@@ -158,7 +169,7 @@ function renderNext() {
   cnEl.classList.remove("show");
 
   infoEl.innerText =
-    `${currentWord.unit} | 阶段:${p.stage} | 连续:${p.knownStreak || 0}`;
+    `${currentWord.unit} | 阶段:${p.stage} | 连续:${p.knownStreak || 0} | 今日:${p.todayCount || 0}`;
 }
 
 
@@ -169,8 +180,15 @@ function handleResult(type) {
   const now = todayStart();
   const p = getProgress(currentWord);
 
+  // ===== 重置当天计数 =====
+  if (p.lastReviewedDay !== now) {
+    p.todayCount = 0;
+  }
+
+  p.todayCount = (p.todayCount || 0) + 1;
   p.lastReviewedDay = now;
 
+  // ===== 逻辑 =====
   if (type === "known") {
     p.stage = Math.min(p.stage + 1, INTERVALS.length - 1);
     p.nextReview = now + daysToMs(INTERVALS[p.stage]);
@@ -179,7 +197,7 @@ function handleResult(type) {
     if (p.knownStreak >= 3) p.mastered = true;
 
   } else if (type === "vague") {
-    p.nextReview = now + daysToMs(INTERVALS[p.stage] || 1);
+    p.nextReview = now + daysToMs(1);
     p.knownStreak = 0;
     p.mastered = false;
 
@@ -194,8 +212,12 @@ function handleResult(type) {
 
   saveProgress();
 
+  // 移除当前词
   reviewQueue.shift();
+
+  // 重新构建
   buildQueue();
+
   renderNext();
 }
 
