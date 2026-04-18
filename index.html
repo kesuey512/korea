@@ -10,7 +10,6 @@
   <div class="card">
     <div class="topbar">
       <div class="title">韩语背词</div>
-
       <div class="auth-area">
         <div id="user-status" class="user-status">未登录</div>
         <div class="auth-buttons">
@@ -19,9 +18,7 @@
         </div>
       </div>
     </div>
-
     <div id="sync-msg" class="sync-msg">正在初始化...</div>
-
     <div class="study-controls">
       <div class="control-group">
         <label for="study-mode">背诵模式</label>
@@ -30,7 +27,6 @@
           <option value="unit">按单元背诵</option>
         </select>
       </div>
-
       <div class="control-group">
         <label for="unit-select">选择单元</label>
         <select id="unit-select">
@@ -38,12 +34,10 @@
         </select>
       </div>
     </div>
-
     <div class="reset-controls">
       <button id="reset-current-btn" class="btn-reset-current">重置当前模式进度</button>
       <button id="reset-all-btn" class="btn-reset-all">重置全部进度</button>
     </div>
-
     <div class="status-panel">
       <div class="status-box status-learn">
         <div class="status-label">待学习</div>
@@ -58,36 +52,31 @@
         <div id="mastered-count" class="status-count">0</div>
       </div>
     </div>
-
     <div id="unit-info" class="status">正在加载词库...</div>
-
+    <div id="group-info" class="status" style="font-weight: 500;"></div>
+    <div id="group-progress" class="status"></div>
     <div class="kr" id="kr">---</div>
     <div class="cn" id="cn">---</div>
-
     <div class="btn-group">
       <button class="btn-main" id="speak-btn">🔊 发音</button>
       <button class="btn-main" id="show-btn">👁 查看翻译</button>
-
       <hr class="divider" />
-
       <div class="row">
         <button class="btn-remember" id="known-btn">✅ 记住</button>
         <button class="btn-vague" id="vague-btn">😕 模糊</button>
         <button class="btn-forget" id="unknown-btn">❌ 忘记</button>
       </div>
     </div>
-
     <div class="status status-bottom">
       当前队列: <span id="due-count" class="badge">0</span>
     </div>
-
     <div class="footer">
-      规则：记住按曲线推进；模糊 2 天后复习；忘记 1 天后复习。<br />
-      连续 3 次记住记为“已掌握”，但到期后仍继续复习。<br />
+      规则：10个单词为一组，全部认识后完成本组。<br />
+      记住按艾宾浩斯曲线推进；模糊/忘记明天复习，本组内会再练一次。<br />
+      连续 3 次记住记为"已掌握"，但到期后仍继续复习。<br />
       已登录时可跨设备同步；未登录时仅保存在本机。
     </div>
   </div>
-
   <script type="module" src="./app.js"></script>
 </body>
 </html>
