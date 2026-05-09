@@ -1,140 +1,180 @@
+const STORAGE_KEY = "korea_vocab_progress_v2";
+const LEGACY_STORAGE_KEY = "韩语背词_progress";
+const INTERVALS = [1, 2, 4, 7, 15, 30];
+const GROUP_SIZE = 10;
+
 let words = [];
 let currentWord = null;
-let wordProgress = {};
-
-// 艾宾浩斯间隔（天）：阶段0=学习当天，阶段1=第二天，之后按曲线
-// 第一次记住后 → 明天复习（间隔1天）
-const INTERVALS = [1, 2, 4, 7, 15, 30];
-
-// ===== 模式状态 =====
-// mode: "learn" | "review"
+let currentGroup = [];
+let groupPendingSet = new Set();
+let groupQueue = [];
+let groupsDone = 0;
 let mode = "learn";
 
-// ===== 分组状态 =====
-// 每组10个单词，所有单词都需要被"认识"后才结束本组
-let currentGroup = [];         // 当前组的单词列表（每组最多10个）
-let groupPendingSet = new Set(); // 本组中尚未点击"认识"的单词id集合
-let groupQueue = [];           // 当前组的学习队列（含重复项，直到全部认识）
-let groupsDone = 0;            // 今天已完成的组数
-
-// ===== DOM =====
-const krEl = document.getElementById("kr");
-const cnEl = document.getElementById("cn");
-const infoEl = document.getElementById("unit-info");
-const learnCountEl = document.getElementById("learn-count");
-const reviewCountEl = document.getElementById("review-count");
-const masteredCountEl = document.getElementById("mastered-count");
-const modeSelect = document.getElementById("study-mode");
-const unitSelect = document.getElementById("unit-select");
-
-// 组进度显示（如果HTML中有这些元素）
-const groupInfoEl = document.getElementById("group-info");
-const groupProgressEl = document.getElementById("group-progress");
-
-// ===== 按钮绑定 =====
-document.getElementById("show-btn").onclick = showMeaning;
-document.getElementById("known-btn").onclick = () => handleResult("known");
-document.getElementById("vague-btn").onclick = () => handleResult("vague");
-document.getElementById("unknown-btn").onclick = () => handleResult("unknown");
-document.getElementById("reset-current-btn").onclick = resetCurrent;
-document.getElementById("reset-all-btn").onclick = resetAll;
-document.getElementById("speak-btn").onclick = () => {
-  if (!currentWord) return;
-  const utter = new SpeechSynthesisUtterance(currentWord.kr);
-  utter.lang = "ko-KR";
-  speechSynthesis.speak(utter);
+let state = {
+  version: 2,
+  updatedAt: null,
+  progress: {},
+  settings: {
+    dailyLimit: 20
+  }
 };
 
-// ===== 时间工具 =====
+const $ = (id) => document.getElementById(id);
+
+const els = {
+  kr: $("kr"),
+  cn: $("cn"),
+  info: $("unit-info"),
+  learnCount: $("learn-count"),
+  reviewCount: $("review-count"),
+  masteredCount: $("mastered-count"),
+  todayNewCount: $("today-new-count"),
+  modeSelect: $("study-mode"),
+  unitSelect: $("unit-select"),
+  dailyLimit: $("daily-limit"),
+  searchInput: $("search-input"),
+  searchResults: $("search-results"),
+  groupInfo: $("group-info"),
+  groupProgress: $("group-progress"),
+  syncMsg: $("sync-msg"),
+  userStatus: $("user-status"),
+  importFile: $("import-file")
+};
+
+$("show-btn").addEventListener("click", showMeaning);
+$("known-btn").addEventListener("click", () => handleResult("known"));
+$("vague-btn").addEventListener("click", () => handleResult("vague"));
+$("unknown-btn").addEventListener("click", () => handleResult("unknown"));
+$("reset-current-btn").addEventListener("click", resetCurrent);
+$("reset-all-btn").addEventListener("click", resetAll);
+$("speak-btn").addEventListener("click", speakCurrent);
+$("export-btn").addEventListener("click", exportProgress);
+els.importFile.addEventListener("change", importProgress);
+els.modeSelect.addEventListener("change", startSession);
+els.unitSelect.addEventListener("change", startSession);
+els.dailyLimit.addEventListener("change", () => {
+  state.settings.dailyLimit = Number(els.dailyLimit.value);
+  saveProgress();
+  startSession();
+});
+els.searchInput.addEventListener("input", renderSearchResults);
+
+document.addEventListener("keydown", (event) => {
+  if (event.target.matches("input, select")) return;
+  if (event.key === " ") {
+    event.preventDefault();
+    showMeaning();
+  }
+  if (event.key === "1") handleResult("known");
+  if (event.key === "2") handleResult("vague");
+  if (event.key === "3") handleResult("unknown");
+  if (event.key.toLowerCase() === "p") speakCurrent();
+});
+
+load();
+
+async function load() {
+  try {
+    const response = await fetch("data.json");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    words = await response.json();
+    initUnits();
+    loadProgress();
+    els.dailyLimit.value = String(state.settings.dailyLimit ?? 20);
+    startSession();
+    setSyncMessage("进度保存在本机。可用导出/导入在设备间迁移，接入云端后可自动同步。", "info");
+  } catch (error) {
+    setSyncMessage("词库加载失败，请检查 data.json。", "danger");
+  }
+}
+
+function initUnits() {
+  const units = [...new Set(words.map((word) => word.unit))];
+  units.forEach((unit) => {
+    const option = document.createElement("option");
+    option.value = unit;
+    option.innerText = unit;
+    els.unitSelect.appendChild(option);
+  });
+}
+
 function todayStart() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
 }
 
 function tomorrowStart() {
   return todayStart() + 86400000;
 }
 
-function daysToMs(d) {
-  return d * 86400000;
+function daysToMs(days) {
+  return days * 86400000;
 }
 
-// ===== 数据加载 =====
-fetch("data.json")
-  .then(res => res.json())
-  .then(data => {
-    words = data;
-    initUnits();
-    loadProgress();
-    startSession();
-    document.getElementById("sync-msg").style.display = "none";
-  })
-  .catch(() => {
-    document.getElementById("sync-msg").innerText = "词库加载失败，请检查 data.json";
-  });
-
-// ===== 初始化单元选择 =====
-function initUnits() {
-  const units = [...new Set(words.map(w => w.unit))];
-  units.forEach(u => {
-    const opt = document.createElement("option");
-    opt.value = u;
-    opt.innerText = u;
-    unitSelect.appendChild(opt);
-  });
+function getScopeKey() {
+  if (els.modeSelect.value === "unit" && els.unitSelect.value !== "__all__") {
+    return `unit:${els.unitSelect.value}`;
+  }
+  return "all";
 }
 
-// ===== 模式过滤 =====
-function getFilteredWords() {
-  const studyMode = modeSelect.value;
-  if (studyMode === "all") return words;
-  const selected = unitSelect.value;
-  if (selected === "__all__") return words;
-  return words.filter(w => w.unit === selected);
-}
-
-// ===== 进度 key =====
 function getKey(word) {
-  return modeSelect.value + "_" + word.id;
+  return `${getScopeKey()}_${word.id}`;
 }
 
-// ===== 获取/初始化进度 =====
 function getProgress(word) {
   const key = getKey(word);
-  if (!wordProgress[key]) {
-    wordProgress[key] = {
-      stage: -1,           // -1=未学过，0~N=艾宾浩斯阶段
-      nextReview: null,    // 下次复习的零点时间戳，null=未学过
-      knownStreak: 0,      // 连续"认识"次数
-      mastered: false,     // 是否已掌握（连续3次认识）
-      learnedDay: null,    // 首次学习的零点时间戳
-      lastResult: null,    // 上次结果
+  if (!state.progress[key]) {
+    const legacyKey = `${els.modeSelect.value}_${word.id}`;
+    if (state.progress[legacyKey]) {
+      state.progress[key] = state.progress[legacyKey];
+      delete state.progress[legacyKey];
+    }
+  }
+  if (!state.progress[key]) {
+    state.progress[key] = {
+      stage: -1,
+      nextReview: null,
+      knownStreak: 0,
+      mastered: false,
+      learnedDay: null,
+      lastResult: null,
+      totalReviews: 0,
+      mistakes: 0,
+      updatedAt: null
     };
   }
-  return wordProgress[key];
+  return state.progress[key];
 }
 
-// ===== 获取需要"学习"的新词（从未学过） =====
-function getNewWords() {
-  return getFilteredWords().filter(w => {
-    const p = getProgress(w);
-    return p.stage === -1;
-  });
+function getFilteredWords() {
+  if (els.modeSelect.value === "all") return words;
+  if (els.unitSelect.value === "__all__") return words;
+  return words.filter((word) => word.unit === els.unitSelect.value);
 }
 
-// ===== 获取今天需要"复习"的单词 =====
 function getReviewWords() {
   const today = todayStart();
-  return getFilteredWords().filter(w => {
-    const p = getProgress(w);
-    if (p.stage === -1) return false;        // 还没学过
-    if (p.nextReview === null) return false;
-    return today >= p.nextReview;
+  return getFilteredWords().filter((word) => {
+    const progress = getProgress(word);
+    return progress.stage !== -1 && progress.nextReview !== null && today >= progress.nextReview;
   });
 }
 
-// ===== 会话初始化：决定进入学习还是复习 =====
+function getTodayLearnedCount() {
+  const today = todayStart();
+  return getFilteredWords().filter((word) => getProgress(word).learnedDay === today).length;
+}
+
+function getNewWords() {
+  const newWords = getFilteredWords().filter((word) => getProgress(word).stage === -1);
+  const limit = Number(els.dailyLimit.value);
+  if (!limit) return newWords;
+  return newWords.slice(0, Math.max(limit - getTodayLearnedCount(), 0));
+}
+
 function startSession() {
   groupsDone = 0;
   const reviewWords = getReviewWords();
@@ -148,140 +188,92 @@ function startSession() {
     loadNextGroup(newWords);
   } else {
     showAllDone();
-    return;
   }
 
   updateCounts();
 }
 
-// ===== 加载下一组（10个单词）=====
 function loadNextGroup(wordPool) {
-  // 取前10个
-  currentGroup = wordPool.slice(0, 10);
-
+  currentGroup = wordPool.slice(0, GROUP_SIZE);
   if (currentGroup.length === 0) {
-    checkSessionDone();
+    showAllDone();
     return;
   }
 
-  // 初始化本组的"待认识"集合
-  groupPendingSet = new Set(currentGroup.map(w => w.id));
-
-  // 构建本组队列：打乱顺序
+  groupPendingSet = new Set(currentGroup.map((word) => word.id));
   groupQueue = shuffle([...currentGroup]);
-
   renderGroupInfo();
   renderNext();
 }
 
-// ===== 渲染组信息 =====
 function renderGroupInfo() {
   const total = currentGroup.length;
   const pending = groupPendingSet.size;
-  const known = total - pending;
-
-  if (groupInfoEl) {
-    const modeLabel = mode === "learn" ? "学习" : "复习";
-    groupInfoEl.innerText = `${modeLabel}模式 · 第 ${groupsDone + 1} 组`;
-  }
-  if (groupProgressEl) {
-    groupProgressEl.innerText = `本组进度：${known} / ${total} 已认识`;
-  }
+  const done = total - pending;
+  els.groupInfo.innerText = `${mode === "learn" ? "学习" : "复习"}模式 · 第 ${groupsDone + 1} 组`;
+  els.groupProgress.innerText = `本组进度：${done} / ${total}`;
 }
 
-// ===== 渲染下一个单词 =====
 function renderNext() {
   if (groupQueue.length === 0) {
-    // 队列为空，检查本组是否完成
     if (groupPendingSet.size === 0) {
-      // 本组全部认识，进入下一组
-      groupsDone++;
+      groupsDone += 1;
       onGroupComplete();
-    } else {
-      // 还有未认识的，但队列空了（理论上不会，只是保险）
-      groupQueue = shuffle(
-        currentGroup.filter(w => groupPendingSet.has(w.id))
-      );
-      renderNext();
+      return;
     }
-    return;
+    groupQueue = shuffle(currentGroup.filter((word) => groupPendingSet.has(word.id)));
   }
 
   currentWord = groupQueue.shift();
-  const p = getProgress(currentWord);
+  const progress = getProgress(currentWord);
+  const stageLabel = progress.stage === -1 ? "新词" : `阶段 ${progress.stage}`;
+  const nextReview = formatNextReview(progress.nextReview);
 
-  krEl.innerText = currentWord.kr;
-  cnEl.innerText = `[${currentWord.pos}] ${currentWord.cn}`;
-  cnEl.classList.remove("show");
-
-  if (infoEl) {
-    const stageLabel = p.stage === -1 ? "新词" : `阶段 ${p.stage}`;
-    infoEl.innerText =
-      `${currentWord.unit} | ${stageLabel} | 连续认识 ${p.knownStreak} 次${p.mastered ? " ⭐已掌握" : ""}`;
-  }
+  els.kr.innerText = currentWord.kr;
+  els.cn.innerText = `[${currentWord.pos}] ${currentWord.cn}`;
+  els.cn.classList.remove("show");
+  els.info.innerText = `${currentWord.unit} · ${stageLabel} · 连续记住 ${progress.knownStreak} 次${progress.mastered ? " · 已掌握" : ""}${nextReview}`;
 
   renderGroupInfo();
   updateCounts();
 }
 
-// ===== 显示释义 =====
 function showMeaning() {
-  cnEl.classList.add("show");
+  els.cn.classList.add("show");
 }
 
-// ===== 核心逻辑 =====
 function handleResult(type) {
   if (!currentWord) return;
 
   const today = todayStart();
-  const p = getProgress(currentWord);
-
-  p.lastResult = type;
+  const progress = getProgress(currentWord);
+  progress.lastResult = type;
+  progress.totalReviews = (progress.totalReviews || 0) + 1;
+  progress.updatedAt = Date.now();
 
   if (type === "known") {
-    p.knownStreak = (p.knownStreak || 0) + 1;
-    if (p.knownStreak >= 3) p.mastered = true;
+    progress.knownStreak = (progress.knownStreak || 0) + 1;
+    progress.mastered = progress.knownStreak >= 3;
 
-    if (mode === "learn") {
-      // 学习模式：首次认识 → 明天复习（阶段0）
-      if (p.stage === -1) {
-        p.stage = 0;
-        p.learnedDay = today;
-        p.nextReview = tomorrowStart(); // 明天零点后可复习
-      } else {
-        // 学习模式下已有阶段（极少情况）
-        p.stage = Math.min(p.stage + 1, INTERVALS.length - 1);
-        p.nextReview = today + daysToMs(INTERVALS[p.stage]);
-      }
+    if (progress.stage === -1) {
+      progress.stage = 0;
+      progress.learnedDay = today;
+      progress.nextReview = tomorrowStart();
     } else {
-      // 复习模式：推进艾宾浩斯阶段
-      p.stage = Math.min(p.stage + 1, INTERVALS.length - 1);
-      p.nextReview = today + daysToMs(INTERVALS[p.stage]);
+      progress.stage = Math.min(progress.stage + 1, INTERVALS.length - 1);
+      progress.nextReview = today + daysToMs(INTERVALS[progress.stage]);
     }
 
-    // 从本组"待认识"中移除 → 该词本组已掌握
     groupPendingSet.delete(currentWord.id);
-
-  } else if (type === "vague") {
-    // 模糊：稍微退一步，明天复习
-    p.knownStreak = 0;
-    p.mastered = false;
-    if (p.stage > 0) p.stage = Math.max(p.stage - 1, 0);
-    p.nextReview = tomorrowStart();
-
-    // 本组中仍然未认识，保留在 groupPendingSet 中
-    // 将该词重新加入队列末尾（本组内再练一次）
-    groupQueue.push(currentWord);
-
   } else {
-    // 忘记：重置阶段，明天复习
-    p.knownStreak = 0;
-    p.mastered = false;
-    p.stage = Math.max(p.stage, 0); // 保持在0，不退回-1
-    p.nextReview = tomorrowStart();
-
-    // 本组中仍然未认识，保留在 groupPendingSet 中
-    // 将该词重新加入队列末尾
+    progress.knownStreak = 0;
+    progress.mastered = false;
+    progress.mistakes = (progress.mistakes || 0) + 1;
+    progress.stage = Math.max(progress.stage, 0);
+    if (type === "vague" && progress.stage > 0) {
+      progress.stage -= 1;
+    }
+    progress.nextReview = tomorrowStart();
     groupQueue.push(currentWord);
   }
 
@@ -289,115 +281,234 @@ function handleResult(type) {
   renderNext();
 }
 
-// ===== 本组完成后处理 =====
 function onGroupComplete() {
-  // 显示本组完成提示
-  krEl.innerText = "✓";
-  cnEl.innerText = `第 ${groupsDone} 组完成！`;
-  cnEl.classList.add("show");
-  if (infoEl) infoEl.innerText = "";
-  if (groupProgressEl) groupProgressEl.innerText = "";
+  currentWord = null;
+  els.kr.innerText = "完成";
+  els.cn.innerText = `第 ${groupsDone} 组完成`;
+  els.cn.classList.add("show");
+  els.info.innerText = "";
+  els.groupProgress.innerText = "";
 
-  // 短暂延迟后加载下一组
-  setTimeout(() => {
+  window.setTimeout(() => {
     const remaining = mode === "learn" ? getNewWords() : getReviewWords();
     if (remaining.length > 0) {
       loadNextGroup(remaining);
-    } else {
-      // 当前模式做完，检查另一种模式
-      if (mode === "learn") {
-        const reviewWords = getReviewWords();
-        if (reviewWords.length > 0) {
-          mode = "review";
-          groupsDone = 0;
-          loadNextGroup(reviewWords);
-          return;
-        }
-      }
-      showAllDone();
+      return;
     }
-  }, 1500);
+    startSession();
+  }, 900);
 }
 
-// ===== 全部完成 =====
 function showAllDone() {
-  krEl.innerText = "🎉";
-  cnEl.innerText = "今天的任务全部完成！";
-  cnEl.classList.add("show");
-  if (infoEl) infoEl.innerText = "";
-  if (groupInfoEl) groupInfoEl.innerText = "";
-  if (groupProgressEl) groupProgressEl.innerText = "";
   currentWord = null;
+  els.kr.innerText = "今日完成";
+  els.cn.innerText = getReviewWords().length === 0 && getNewWords().length === 0
+    ? "当前范围没有到期复习，或今日新词额度已用完。"
+    : "今天的任务全部完成。";
+  els.cn.classList.add("show");
+  els.info.innerText = "";
+  els.groupInfo.innerText = "";
+  els.groupProgress.innerText = "";
   updateCounts();
 }
 
-// ===== 会话结束检查 =====
-function checkSessionDone() {
-  const reviewWords = getReviewWords();
-  const newWords = getNewWords();
-  if (reviewWords.length === 0 && newWords.length === 0) {
-    showAllDone();
-  } else {
-    startSession();
-  }
-}
-
-// ===== 更新统计面板 =====
 function updateCounts() {
   const today = todayStart();
-  let learn = 0, review = 0, mastered = 0;
+  let learn = 0;
+  let review = 0;
+  let mastered = 0;
 
-  getFilteredWords().forEach(w => {
-    const p = getProgress(w);
-    if (p.mastered) mastered++;
-    if (p.stage === -1) learn++;
-    else if (p.nextReview !== null && today >= p.nextReview) review++;
+  getFilteredWords().forEach((word) => {
+    const progress = getProgress(word);
+    if (progress.mastered) mastered += 1;
+    if (progress.stage === -1) learn += 1;
+    if (progress.stage !== -1 && progress.nextReview !== null && today >= progress.nextReview) review += 1;
   });
 
-  learnCountEl.innerText = learn;
-  reviewCountEl.innerText = review;
-  masteredCountEl.innerText = mastered;
-
-  const dueCountEl = document.getElementById("due-count");
-  if (dueCountEl) {
-    dueCountEl.innerText = groupPendingSet ? groupPendingSet.size : 0;
-  }
+  els.learnCount.innerText = learn;
+  els.reviewCount.innerText = review;
+  els.masteredCount.innerText = mastered;
+  els.todayNewCount.innerText = getTodayLearnedCount();
 }
 
-// ===== 本地存储 =====
+function renderSearchResults() {
+  const query = els.searchInput.value.trim().toLowerCase();
+  els.searchResults.innerHTML = "";
+
+  if (!query) {
+    els.searchResults.hidden = true;
+    return;
+  }
+
+  const matches = words
+    .filter((word) => [word.kr, word.cn, word.pos, word.unit].some((value) => String(value).toLowerCase().includes(query)))
+    .slice(0, 12);
+
+  matches.forEach((word) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "search-item";
+    item.innerHTML = `<strong>${escapeHtml(word.kr)}</strong><span>${escapeHtml(word.cn)}</span><small>${escapeHtml(word.unit)} · ${escapeHtml(word.pos)}</small>`;
+    item.addEventListener("click", () => {
+      currentWord = word;
+      currentGroup = [word];
+      groupPendingSet = new Set([word.id]);
+      groupQueue = [];
+      els.searchInput.value = "";
+      els.searchResults.hidden = true;
+      renderNextFromSearch(word);
+    });
+    els.searchResults.appendChild(item);
+  });
+
+  if (matches.length === 0) {
+    els.searchResults.innerHTML = `<div class="empty-result">没有找到匹配单词</div>`;
+  }
+  els.searchResults.hidden = false;
+}
+
+function renderNextFromSearch(word) {
+  const progress = getProgress(word);
+  currentWord = word;
+  els.kr.innerText = word.kr;
+  els.cn.innerText = `[${word.pos}] ${word.cn}`;
+  els.cn.classList.add("show");
+  els.info.innerText = `${word.unit} · ${progress.stage === -1 ? "新词" : `阶段 ${progress.stage}`}`;
+  els.groupInfo.innerText = "搜索预览";
+  els.groupProgress.innerText = "";
+}
+
+function speakCurrent() {
+  if (!currentWord || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(currentWord.kr);
+  utterance.lang = "ko-KR";
+  window.speechSynthesis.speak(utterance);
+}
+
 function saveProgress() {
-  localStorage.setItem("韩语背词_progress", JSON.stringify(wordProgress));
+  state.updatedAt = new Date().toISOString();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function loadProgress() {
-  const p = localStorage.getItem("韩语背词_progress");
-  if (p) wordProgress = JSON.parse(p);
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) {
+    try {
+      state = { ...state, ...JSON.parse(raw) };
+      state.progress ||= {};
+      state.settings ||= { dailyLimit: 20 };
+      return;
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (legacy) {
+    try {
+      state.progress = JSON.parse(legacy);
+      saveProgress();
+      return;
+    } catch {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
+  }
 }
 
-// ===== 重置 =====
+function exportProgress() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `korea-progress-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function importProgress(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const imported = JSON.parse(reader.result);
+      state = mergeState(state, imported);
+      saveProgress();
+      startSession();
+      setSyncMessage("进度已导入并合并。", "success");
+    } catch {
+      setSyncMessage("导入失败，请选择有效的进度 JSON 文件。", "danger");
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.readAsText(file);
+}
+
+function mergeState(localState, incomingState) {
+  const incomingProgress = incomingState.progress || incomingState;
+  const merged = {
+    ...localState,
+    progress: { ...localState.progress },
+    settings: { ...localState.settings, ...(incomingState.settings || {}) }
+  };
+
+  Object.entries(incomingProgress).forEach(([key, value]) => {
+    const local = merged.progress[key];
+    if (!local || (value.updatedAt || 0) > (local.updatedAt || 0)) {
+      merged.progress[key] = value;
+    }
+  });
+
+  return merged;
+}
+
 function resetCurrent() {
-  const studyMode = modeSelect.value;
-  Object.keys(wordProgress).forEach(k => {
-    if (k.startsWith(studyMode + "_")) delete wordProgress[k];
+  if (!confirm("确定重置当前范围的进度吗？")) return;
+  const scope = getScopeKey();
+  Object.keys(state.progress).forEach((key) => {
+    if (key.startsWith(`${scope}_`)) delete state.progress[key];
   });
   saveProgress();
   startSession();
 }
 
 function resetAll() {
-  localStorage.removeItem("韩语背词_progress");
-  location.reload();
+  if (!confirm("确定清空全部进度吗？")) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  state.progress = {};
+  startSession();
 }
 
-// ===== 工具：打乱数组 =====
-function shuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
+function setSyncMessage(message, type = "info") {
+  els.syncMsg.innerText = message;
+  els.syncMsg.dataset.type = type;
+  els.userStatus.innerText = "本机保存 · 可导入/导出";
+}
+
+function formatNextReview(timestamp) {
+  if (!timestamp) return "";
+  const days = Math.ceil((timestamp - todayStart()) / 86400000);
+  if (days <= 0) return " · 今天复习";
+  if (days === 1) return " · 明天复习";
+  return ` · ${days} 天后复习`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+    [array[i], array[j]] = [array[j], array[i]];
   }
-  return arr;
+  return array;
 }
-
-// ===== 监听模式/单元切换 =====
-modeSelect.onchange = () => { startSession(); };
-unitSelect.onchange = () => { startSession(); };
