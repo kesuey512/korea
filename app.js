@@ -10,6 +10,7 @@ let groupPendingSet = new Set();
 let groupQueue = [];
 let groupsDone = 0;
 let mode = "learn";
+let activeTask = "new";
 
 let state = {
   version: 2,
@@ -39,7 +40,10 @@ const els = {
   groupProgress: $("group-progress"),
   syncMsg: $("sync-msg"),
   userStatus: $("user-status"),
-  importFile: $("import-file")
+  importFile: $("import-file"),
+  taskNewBtn: $("task-new-btn"),
+  taskDueBtn: $("task-due-btn"),
+  taskTodayBtn: $("task-today-btn")
 };
 
 $("show-btn").addEventListener("click", showMeaning);
@@ -51,8 +55,11 @@ $("reset-all-btn").addEventListener("click", resetAll);
 $("speak-btn").addEventListener("click", speakCurrent);
 $("export-btn").addEventListener("click", exportProgress);
 els.importFile.addEventListener("change", importProgress);
-els.modeSelect.addEventListener("change", startSession);
-els.unitSelect.addEventListener("change", startSession);
+els.taskNewBtn.addEventListener("click", () => setActiveTask("new"));
+els.taskDueBtn.addEventListener("click", () => setActiveTask("due"));
+els.taskTodayBtn.addEventListener("click", () => setActiveTask("today"));
+els.modeSelect.addEventListener("change", () => startSession());
+els.unitSelect.addEventListener("change", () => startSession());
 els.dailyLimit.addEventListener("change", () => {
   state.settings.dailyLimit = Number(els.dailyLimit.value);
   saveProgress();
@@ -143,6 +150,7 @@ function getProgress(word) {
       lastResult: null,
       totalReviews: 0,
       mistakes: 0,
+      todayReviewDone: false,
       updatedAt: null
     };
   }
@@ -168,6 +176,14 @@ function getTodayLearnedCount() {
   return getFilteredWords().filter((word) => getProgress(word).learnedDay === today).length;
 }
 
+function getTodayReviewWords() {
+  const today = todayStart();
+  return getFilteredWords().filter((word) => {
+    const progress = getProgress(word);
+    return progress.learnedDay === today && progress.stage !== -1 && !progress.todayReviewDone;
+  });
+}
+
 function getNewWords() {
   const newWords = getFilteredWords().filter((word) => getProgress(word).stage === -1);
   const limit = Number(els.dailyLimit.value);
@@ -175,19 +191,28 @@ function getNewWords() {
   return newWords.slice(0, Math.max(limit - getTodayLearnedCount(), 0));
 }
 
+function setActiveTask(task) {
+  activeTask = task;
+  startSession();
+}
+
 function startSession() {
   groupsDone = 0;
-  const reviewWords = getReviewWords();
+  updateTaskTabs();
+
+  const dueWords = getReviewWords();
+  const todayWords = getTodayReviewWords();
   const newWords = getNewWords();
 
-  if (reviewWords.length > 0) {
+  if (activeTask === "due") {
     mode = "review";
-    loadNextGroup(reviewWords);
-  } else if (newWords.length > 0) {
+    loadNextGroup(dueWords);
+  } else if (activeTask === "today") {
+    mode = "today";
+    loadNextGroup(todayWords);
+  } else {
     mode = "learn";
     loadNextGroup(newWords);
-  } else {
-    showAllDone();
   }
 
   updateCounts();
@@ -196,7 +221,7 @@ function startSession() {
 function loadNextGroup(wordPool) {
   currentGroup = wordPool.slice(0, GROUP_SIZE);
   if (currentGroup.length === 0) {
-    showAllDone();
+    showTaskDone();
     return;
   }
 
@@ -210,7 +235,7 @@ function renderGroupInfo() {
   const total = currentGroup.length;
   const pending = groupPendingSet.size;
   const done = total - pending;
-  els.groupInfo.innerText = `${mode === "learn" ? "学习" : "复习"}模式 · 第 ${groupsDone + 1} 组`;
+  els.groupInfo.innerText = `${getTaskLabel()} · 第 ${groupsDone + 1} 组`;
   els.groupProgress.innerText = `本组进度：${done} / ${total}`;
 }
 
@@ -259,6 +284,9 @@ function handleResult(type) {
       progress.stage = 0;
       progress.learnedDay = today;
       progress.nextReview = tomorrowStart();
+    } else if (mode === "today") {
+      progress.todayReviewDone = true;
+      progress.nextReview = tomorrowStart();
     } else {
       progress.stage = Math.min(progress.stage + 1, INTERVALS.length - 1);
       progress.nextReview = today + daysToMs(INTERVALS[progress.stage]);
@@ -269,12 +297,16 @@ function handleResult(type) {
     progress.knownStreak = 0;
     progress.mastered = false;
     progress.mistakes = (progress.mistakes || 0) + 1;
-    progress.stage = Math.max(progress.stage, 0);
-    if (type === "vague" && progress.stage > 0) {
-      progress.stage -= 1;
+    if (mode === "learn" && progress.stage === -1) {
+      progress.nextReview = null;
+    } else {
+      progress.stage = Math.max(progress.stage, 0);
+      if (mode === "review" && type === "vague" && progress.stage > 0) {
+        progress.stage -= 1;
+      }
+      progress.nextReview = tomorrowStart();
     }
-    progress.nextReview = tomorrowStart();
-    groupQueue.push(currentWord);
+    enqueueRepeat(currentWord, type === "unknown" ? 2 : 1);
   }
 
   saveProgress();
@@ -290,7 +322,7 @@ function onGroupComplete() {
   els.groupProgress.innerText = "";
 
   window.setTimeout(() => {
-    const remaining = mode === "learn" ? getNewWords() : getReviewWords();
+    const remaining = getActiveTaskWords();
     if (remaining.length > 0) {
       loadNextGroup(remaining);
       return;
@@ -299,12 +331,10 @@ function onGroupComplete() {
   }, 900);
 }
 
-function showAllDone() {
+function showTaskDone() {
   currentWord = null;
-  els.kr.innerText = "今日完成";
-  els.cn.innerText = getReviewWords().length === 0 && getNewWords().length === 0
-    ? "当前范围没有到期复习，或今日新词额度已用完。"
-    : "今天的任务全部完成。";
+  els.kr.innerText = "当前任务完成";
+  els.cn.innerText = getEmptyTaskMessage();
   els.cn.classList.add("show");
   els.info.innerText = "";
   els.groupInfo.innerText = "";
@@ -329,6 +359,7 @@ function updateCounts() {
   els.reviewCount.innerText = review;
   els.masteredCount.innerText = mastered;
   els.todayNewCount.innerText = getTodayLearnedCount();
+  updateTaskTabs();
 }
 
 function renderSearchResults() {
@@ -376,6 +407,46 @@ function renderNextFromSearch(word) {
   els.info.innerText = `${word.unit} · ${progress.stage === -1 ? "新词" : `阶段 ${progress.stage}`}`;
   els.groupInfo.innerText = "搜索预览";
   els.groupProgress.innerText = "";
+}
+
+function getActiveTaskWords() {
+  if (activeTask === "due") return getReviewWords();
+  if (activeTask === "today") return getTodayReviewWords();
+  return getNewWords();
+}
+
+function getTaskLabel() {
+  if (mode === "review") return "到期复习";
+  if (mode === "today") return "复习今日新词";
+  return "学习新词";
+}
+
+function getEmptyTaskMessage() {
+  if (activeTask === "due") return "当前范围没有到期复习。";
+  if (activeTask === "today") return "今天新学的单词已复习完，或今天还没有新学单词。";
+  return "当前范围今日新词额度已用完，或没有未学单词。";
+}
+
+function enqueueRepeat(word, times) {
+  for (let i = 0; i < times; i += 1) {
+    groupQueue.push(word);
+  }
+}
+
+function updateTaskTabs() {
+  const buttons = {
+    new: els.taskNewBtn,
+    due: els.taskDueBtn,
+    today: els.taskTodayBtn
+  };
+
+  Object.entries(buttons).forEach(([task, button]) => {
+    button.classList.toggle("active", activeTask === task);
+  });
+
+  els.taskNewBtn.innerText = `学习新词 ${getNewWords().length}`;
+  els.taskDueBtn.innerText = `到期复习 ${getReviewWords().length}`;
+  els.taskTodayBtn.innerText = `复习今日新词 ${getTodayReviewWords().length}`;
 }
 
 function speakCurrent() {

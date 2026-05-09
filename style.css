@@ -114,6 +114,30 @@ button {
   color: var(--danger);
 }
 
+.task-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.task-tab {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.task-tab.active {
+  border-color: var(--primary);
+  background: var(--soft);
+  color: var(--primary-dark);
+}
+
 .study-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -372,6 +396,7 @@ button:active,
   }
 
   .study-controls,
+  .task-tabs,
   .status-panel,
   .reset-controls {
     grid-template-columns: 1fr 1fr;
