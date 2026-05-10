@@ -12,6 +12,7 @@
 - 每日新词上限：可设置 10、20、30、50 或不限。
 - 词库搜索：支持按韩语、中文、词性、单元搜索。
 - 本机进度：使用 localStorage 保存，并兼容旧版进度 key。
+- 云端同步：支持 Google 登录，登录后将进度同步到 Firestore。
 - 进度迁移：支持导出和导入 JSON，导入时按更新时间合并。
 - 发音：使用浏览器 speechSynthesis 的 ko-KR 语音。
 
@@ -25,12 +26,22 @@ python -m http.server 8765
 
 然后访问 `http://127.0.0.1:8765/`。
 
-## 下一步：云同步
+## Firebase 设置
 
-推荐接入 Firebase Authentication + Firestore 或 Supabase Auth + Database：
+需要在 Firebase 控制台开启：
 
-1. 登录后使用用户 id 隔离进度。
-2. 启动时拉取云端进度。
-3. 点击记住/模糊/忘记后保存本地并上传云端。
-4. 登录时合并本地进度与云端进度。
-5. 增加冲突策略，例如按 `updatedAt` 保留较新的单词进度。
+1. Authentication -> Sign-in method -> Google。
+2. Firestore Database。
+3. Firestore 安全规则：
+
+```js
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/vocab/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
+```

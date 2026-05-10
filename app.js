@@ -1,7 +1,38 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  doc,
+  getDoc,
+  getFirestore,
+  serverTimestamp,
+  setDoc
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
 const STORAGE_KEY = "korea_vocab_progress_v2";
 const LEGACY_STORAGE_KEY = "韩语背词_progress";
 const INTERVALS = [1, 2, 4, 7, 15, 30];
 const GROUP_SIZE = 10;
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB50lA92DSngs6y98PgK1thovNM4liPycU",
+  authDomain: "korea-83b2a.firebaseapp.com",
+  projectId: "korea-83b2a",
+  storageBucket: "korea-83b2a.firebasestorage.app",
+  messagingSenderId: "559427597840",
+  appId: "1:559427597840:web:49f2decb6ff3753033fc95",
+  measurementId: "G-W2MK1L42X0"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const provider = new GoogleAuthProvider();
 
 let words = [];
 let currentWord = null;
@@ -11,6 +42,9 @@ let groupQueue = [];
 let groupsDone = 0;
 let mode = "learn";
 let activeTask = "new";
+let currentUser = null;
+let cloudReady = false;
+let syncTimer = null;
 
 let state = {
   version: 2,
@@ -41,6 +75,8 @@ const els = {
   syncMsg: $("sync-msg"),
   userStatus: $("user-status"),
   importFile: $("import-file"),
+  loginBtn: $("login-btn"),
+  logoutBtn: $("logout-btn"),
   taskNewBtn: $("task-new-btn"),
   taskDueBtn: $("task-due-btn"),
   taskTodayBtn: $("task-today-btn")
@@ -54,6 +90,8 @@ $("reset-current-btn").addEventListener("click", resetCurrent);
 $("reset-all-btn").addEventListener("click", resetAll);
 $("speak-btn").addEventListener("click", speakCurrent);
 $("export-btn").addEventListener("click", exportProgress);
+els.loginBtn.addEventListener("click", loginWithGoogle);
+els.logoutBtn.addEventListener("click", logout);
 els.importFile.addEventListener("change", importProgress);
 els.taskNewBtn.addEventListener("click", () => setActiveTask("new"));
 els.taskDueBtn.addEventListener("click", () => setActiveTask("due"));
@@ -80,6 +118,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 load();
+initAuth();
 
 async function load() {
   try {
@@ -90,10 +129,38 @@ async function load() {
     loadProgress();
     els.dailyLimit.value = String(state.settings.dailyLimit ?? 20);
     startSession();
-    setSyncMessage("进度保存在本机。可用导出/导入在设备间迁移，接入云端后可自动同步。", "info");
+    setSyncMessage("进度保存在本机。登录 Google 后会自动同步到云端。", "info");
   } catch (error) {
     setSyncMessage("词库加载失败，请检查 data.json。", "danger");
   }
+}
+
+function initAuth() {
+  onAuthStateChanged(auth, async (user) => {
+    currentUser = user;
+    cloudReady = false;
+    els.loginBtn.hidden = Boolean(user);
+    els.logoutBtn.hidden = !user;
+
+    if (!user) {
+      updateUserStatus();
+      setSyncMessage("未登录：进度只保存在本机。", "info");
+      return;
+    }
+
+    updateUserStatus();
+    setSyncMessage("正在同步云端进度...", "info");
+
+    try {
+      await loadCloudProgress();
+      cloudReady = true;
+      saveProgress();
+      startSession();
+      setSyncMessage("云端同步已开启。", "success");
+    } catch (error) {
+      setSyncMessage("云端同步失败，请检查 Authentication、Firestore 和安全规则。", "danger");
+    }
+  });
 }
 
 function initUnits() {
@@ -460,6 +527,7 @@ function speakCurrent() {
 function saveProgress() {
   state.updatedAt = new Date().toISOString();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleCloudSave();
 }
 
 function loadProgress() {
@@ -535,6 +603,74 @@ function mergeState(localState, incomingState) {
   return merged;
 }
 
+async function loginWithGoogle() {
+  try {
+    setSyncMessage("正在打开 Google 登录...", "info");
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    setSyncMessage("登录失败，请确认 Firebase 已启用 Google 登录。", "danger");
+  }
+}
+
+async function logout() {
+  try {
+    await flushCloudSave();
+    await signOut(auth);
+  } catch (error) {
+    setSyncMessage("退出失败，请稍后再试。", "danger");
+  }
+}
+
+function getCloudDocRef() {
+  if (!currentUser) return null;
+  return doc(db, "users", currentUser.uid, "vocab", "progress");
+}
+
+async function loadCloudProgress() {
+  const ref = getCloudDocRef();
+  if (!ref) return;
+
+  const snapshot = await getDoc(ref);
+  if (snapshot.exists()) {
+    const cloudState = snapshot.data().state;
+    if (cloudState) {
+      state = mergeState(state, cloudState);
+    }
+  }
+
+  await saveCloudProgress();
+}
+
+function scheduleCloudSave() {
+  if (!currentUser || !cloudReady) return;
+  window.clearTimeout(syncTimer);
+  syncTimer = window.setTimeout(() => {
+    saveCloudProgress().catch(() => {
+      setSyncMessage("云端保存失败，本机进度仍已保存。", "danger");
+    });
+  }, 600);
+}
+
+async function flushCloudSave() {
+  if (!currentUser || !cloudReady) return;
+  window.clearTimeout(syncTimer);
+  await saveCloudProgress();
+}
+
+async function saveCloudProgress() {
+  const ref = getCloudDocRef();
+  if (!ref) return;
+
+  await setDoc(ref, {
+    uid: currentUser.uid,
+    email: currentUser.email || null,
+    state,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
+  setSyncMessage("云端同步已保存。", "success");
+}
+
 function resetCurrent() {
   if (!confirm("确定重置当前范围的进度吗？")) return;
   const scope = getScopeKey();
@@ -550,12 +686,21 @@ function resetAll() {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(LEGACY_STORAGE_KEY);
   state.progress = {};
+  saveProgress();
   startSession();
 }
 
 function setSyncMessage(message, type = "info") {
   els.syncMsg.innerText = message;
   els.syncMsg.dataset.type = type;
+  updateUserStatus();
+}
+
+function updateUserStatus() {
+  if (currentUser) {
+    els.userStatus.innerText = `已登录 · ${currentUser.email || currentUser.displayName || "Google 账号"}`;
+    return;
+  }
   els.userStatus.innerText = "本机保存 · 可导入/导出";
 }
 
