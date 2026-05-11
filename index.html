@@ -31,86 +31,92 @@
         <button id="task-today-btn" class="task-tab" type="button">复习今日新词</button>
       </div>
 
-      <div class="study-controls">
-        <label class="control-group" for="study-mode">
-          <span>背诵范围</span>
-          <select id="study-mode">
-            <option value="all">全部乱序</option>
-            <option value="unit">按单元背诵</option>
-          </select>
-        </label>
-
-        <label class="control-group" for="unit-select">
-          <span>选择单元</span>
-          <select id="unit-select">
-            <option value="__all__">全部单元</option>
-          </select>
-        </label>
-
-        <label class="control-group" for="daily-limit">
-          <span>每日新词</span>
-          <select id="daily-limit">
-            <option value="10">10 个</option>
-            <option value="20" selected>20 个</option>
-            <option value="30">30 个</option>
-            <option value="50">50 个</option>
-            <option value="0">不限</option>
-          </select>
-        </label>
-
-        <label class="control-group search-group" for="search-input">
-          <span>词库搜索</span>
-          <input id="search-input" type="search" placeholder="韩语 / 中文 / 词性" autocomplete="off" />
-        </label>
-      </div>
-
-      <div id="search-results" class="search-results" hidden></div>
-
-      <div class="status-panel">
-        <div class="status-box">
-          <span class="status-label">待学习</span>
-          <strong id="learn-count" class="status-count">0</strong>
+      <div class="content-grid">
+        <div class="status-panel">
+          <div class="status-box">
+            <span class="status-label">待学习</span>
+            <strong id="learn-count" class="status-count">0</strong>
+          </div>
+          <div class="status-box">
+            <span class="status-label">待复习</span>
+            <strong id="review-count" class="status-count">0</strong>
+          </div>
+          <div class="status-box">
+            <span class="status-label">已掌握</span>
+            <strong id="mastered-count" class="status-count">0</strong>
+          </div>
+          <div class="status-box">
+            <span class="status-label">今日新词</span>
+            <strong id="today-new-count" class="status-count">0</strong>
+          </div>
         </div>
-        <div class="status-box">
-          <span class="status-label">待复习</span>
-          <strong id="review-count" class="status-count">0</strong>
-        </div>
-        <div class="status-box">
-          <span class="status-label">已掌握</span>
-          <strong id="mastered-count" class="status-count">0</strong>
-        </div>
-        <div class="status-box">
-          <span class="status-label">今日新词</span>
-          <strong id="today-new-count" class="status-count">0</strong>
-        </div>
-      </div>
 
-      <div class="word-meta">
-        <div id="unit-info" class="status">准备中</div>
-        <div id="group-info" class="status strong"></div>
-        <div id="group-progress" class="status"></div>
-      </div>
+        <section class="study-area">
+          <div class="word-meta">
+            <div id="unit-info" class="status">准备中</div>
+            <div id="group-info" class="status strong"></div>
+            <div id="group-progress" class="status"></div>
+          </div>
 
-      <article class="word-card" aria-live="polite">
-        <div class="kr" id="kr">---</div>
-        <div class="cn" id="cn">---</div>
-      </article>
+          <article class="word-card" aria-live="polite">
+            <div class="kr" id="kr">---</div>
+            <div class="cn" id="cn">---</div>
+          </article>
 
-      <div class="btn-group">
-        <div class="row">
-          <button class="btn-main" id="speak-btn" type="button">发音</button>
-          <button class="btn-main" id="show-btn" type="button">查看翻译</button>
-        </div>
-        <div class="row">
-          <button class="btn-remember" id="known-btn" type="button">记住</button>
-          <button class="btn-vague" id="vague-btn" type="button">模糊</button>
-          <button class="btn-forget" id="unknown-btn" type="button">忘记</button>
-        </div>
-      </div>
+          <div class="btn-group">
+            <div class="row">
+              <button class="btn-main" id="speak-btn" type="button">发音</button>
+              <button class="btn-main" id="show-btn" type="button">查看翻译</button>
+            </div>
+            <div class="row">
+              <button class="btn-remember" id="known-btn" type="button">记住</button>
+              <button class="btn-vague" id="vague-btn" type="button">模糊</button>
+              <button class="btn-forget" id="unknown-btn" type="button">忘记</button>
+            </div>
+          </div>
+        </section>
 
-      <div class="reset-controls">
-        <button id="reset-current-btn" class="btn-reset-current" type="button">重置当前范围</button>
-        <button id="reset-all-btn" class="btn-reset-all" type="button">重置全部进度</button>
+        <aside class="control-area">
+          <div class="study-controls">
+            <label class="control-group" for="study-mode">
+              <span>背诵范围</span>
+              <select id="study-mode">
+                <option value="all">全部乱序</option>
+                <option value="unit">按单元背诵</option>
+              </select>
+            </label>
+
+            <label class="control-group" for="unit-select">
+              <span>选择单元</span>
+              <select id="unit-select">
+                <option value="__all__">全部单元</option>
+              </select>
+            </label>
+
+            <label class="control-group" for="daily-limit">
+              <span>每日新词</span>
+              <select id="daily-limit">
+                <option value="10">10 个</option>
+                <option value="20" selected>20 个</option>
+                <option value="30">30 个</option>
+                <option value="50">50 个</option>
+                <option value="0">不限</option>
+              </select>
+            </label>
+
+            <label class="control-group search-group" for="search-input">
+              <span>词库搜索</span>
+              <input id="search-input" type="search" placeholder="韩语 / 中文 / 词性" autocomplete="off" />
+            </label>
+          </div>
+
+          <div id="search-results" class="search-results" hidden></div>
+
+          <div class="reset-controls">
+            <button id="reset-current-btn" class="btn-reset-current" type="button">重置当前范围</button>
+            <button id="reset-all-btn" class="btn-reset-all" type="button">重置全部进度</button>
+          </div>
+        </aside>
       </div>
 
       <footer class="footer">

@@ -10,6 +10,8 @@
   --muted: #667085;
   --line: #d8dee8;
   --soft: #eef3ff;
+  --surface: #fbfcfe;
+  --shadow: 0 18px 45px rgba(25, 32, 46, 0.08);
 }
 
 * {
@@ -38,25 +40,26 @@ button {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  place-items: center;
-  padding: 20px;
+  align-items: start;
+  justify-items: center;
+  padding: 28px 18px;
 }
 
 .panel {
-  width: min(100%, 520px);
+  width: min(100%, 1080px);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 22px;
-  box-shadow: 0 18px 45px rgba(25, 32, 46, 0.08);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: var(--shadow);
 }
 
 .topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .title {
@@ -73,6 +76,8 @@ button {
 
 .sync-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -84,10 +89,17 @@ button {
   min-height: 34px;
   padding: 0 12px;
   border-radius: 6px;
+  border: 1px solid transparent;
   background: #eef1f5;
   color: var(--text);
   font-size: 13px;
   white-space: nowrap;
+}
+
+.btn-ghost:hover,
+.file-btn:hover {
+  border-color: var(--line);
+  background: #e8edf5;
 }
 
 #import-file {
@@ -104,6 +116,16 @@ button {
   line-height: 1.5;
 }
 
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-areas:
+    "study status"
+    "study controls";
+  gap: 16px;
+  align-items: start;
+}
+
 .sync-msg[data-type="success"] {
   background: #e9f8f1;
   color: var(--success);
@@ -118,11 +140,11 @@ button {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin: 12px 0;
+  margin: 12px 0 16px;
 }
 
 .task-tab {
-  min-height: 38px;
+  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
@@ -140,7 +162,7 @@ button {
 
 .study-controls {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -223,17 +245,18 @@ button {
 }
 
 .status-panel {
+  grid-area: status;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  margin: 12px 0;
+  margin: 0;
 }
 
 .status-box {
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 9px 8px;
-  background: #fbfcfe;
+  border-radius: 8px;
+  padding: 12px 10px;
+  background: var(--surface);
   text-align: center;
 }
 
@@ -245,11 +268,28 @@ button {
 }
 
 .status-count {
-  font-size: 22px;
+  font-size: 24px;
+}
+
+.study-area {
+  grid-area: study;
+  min-width: 0;
+}
+
+.control-area {
+  grid-area: controls;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
 }
 
 .word-meta {
-  min-height: 70px;
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 6px 0 10px;
 }
 
 .status {
@@ -267,15 +307,18 @@ button {
 .word-card {
   display: grid;
   align-content: center;
-  min-height: 172px;
-  margin: 8px 0 16px;
-  border-block: 1px solid var(--line);
+  min-height: 300px;
+  margin: 0 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
   text-align: center;
+  padding: 28px 18px;
 }
 
 .kr {
-  margin: 0 0 12px;
-  font-size: 48px;
+  margin: 0 0 16px;
+  font-size: clamp(44px, 8vw, 76px);
   font-weight: 750;
   line-height: 1.18;
   word-break: keep-all;
@@ -285,7 +328,7 @@ button {
 .cn {
   min-height: 32px;
   color: var(--muted);
-  font-size: 19px;
+  font-size: 21px;
   line-height: 1.5;
   opacity: 0;
   visibility: hidden;
@@ -319,8 +362,8 @@ button {
 .btn-forget,
 .btn-reset-current,
 .btn-reset-all {
-  min-height: 44px;
-  border-radius: 6px;
+  min-height: 48px;
+  border-radius: 8px;
   padding: 0 12px;
   font-weight: 650;
 }
@@ -350,7 +393,7 @@ button {
 }
 
 .reset-controls {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   margin-top: 12px;
 }
 
@@ -388,11 +431,33 @@ button:active,
   .panel {
     width: 100%;
     min-height: calc(100vh - 20px);
-    padding: 16px;
+    padding: 14px;
+    border-radius: 8px;
   }
 
   .topbar {
     flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .sync-actions {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .sync-actions .btn-ghost,
+  .sync-actions .file-btn {
+    padding: 0 8px;
+  }
+
+  .content-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "status"
+      "study"
+      "controls";
+    gap: 12px;
   }
 
   .study-controls,
@@ -402,16 +467,58 @@ button:active,
     grid-template-columns: 1fr 1fr;
   }
 
+  .task-tabs {
+    grid-template-columns: 1fr;
+  }
+
   .status-panel {
     gap: 6px;
   }
 
+  .control-area {
+    padding: 12px;
+  }
+
+  .word-meta {
+    min-height: auto;
+    padding-top: 2px;
+  }
+
+  .word-card {
+    min-height: 240px;
+    padding: 22px 14px;
+  }
+
   .kr {
-    font-size: 40px;
+    font-size: 44px;
+  }
+
+  .cn {
+    font-size: 18px;
   }
 
   .row,
   .row:last-child {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 561px) and (max-width: 900px) {
+  .panel {
+    width: min(100%, 720px);
+  }
+
+  .content-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "status"
+      "study"
+      "controls";
+  }
+
+  .status-panel,
+  .study-controls,
+  .reset-controls {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
