@@ -158,7 +158,7 @@ function initAuth() {
       startSession();
       setSyncMessage("云端同步已开启。", "success");
     } catch (error) {
-      setSyncMessage("云端同步失败，请检查 Authentication、Firestore 和安全规则。", "danger");
+      setSyncMessage(`云端同步失败：${formatFirebaseError(error)}`, "danger");
     }
   });
 }
@@ -608,7 +608,7 @@ async function loginWithGoogle() {
     setSyncMessage("正在打开 Google 登录...", "info");
     await signInWithPopup(auth, provider);
   } catch (error) {
-    setSyncMessage("登录失败，请确认 Firebase 已启用 Google 登录。", "danger");
+    setSyncMessage(`登录失败：${formatFirebaseError(error)}`, "danger");
   }
 }
 
@@ -617,7 +617,7 @@ async function logout() {
     await flushCloudSave();
     await signOut(auth);
   } catch (error) {
-    setSyncMessage("退出失败，请稍后再试。", "danger");
+    setSyncMessage(`退出失败：${formatFirebaseError(error)}`, "danger");
   }
 }
 
@@ -645,8 +645,8 @@ function scheduleCloudSave() {
   if (!currentUser || !cloudReady) return;
   window.clearTimeout(syncTimer);
   syncTimer = window.setTimeout(() => {
-    saveCloudProgress().catch(() => {
-      setSyncMessage("云端保存失败，本机进度仍已保存。", "danger");
+    saveCloudProgress().catch((error) => {
+      setSyncMessage(`云端保存失败：${formatFirebaseError(error)}。本机进度仍已保存。`, "danger");
     });
   }, 600);
 }
@@ -702,6 +702,21 @@ function updateUserStatus() {
     return;
   }
   els.userStatus.innerText = "本机保存 · 可导入/导出";
+}
+
+function formatFirebaseError(error) {
+  const code = error?.code || "unknown";
+  const message = error?.message || "未知错误";
+  const hints = {
+    "permission-denied": "权限被拒绝，请检查 Firestore 规则是否已发布。",
+    "unavailable": "Firestore 暂时不可用或网络连接失败。",
+    "not-found": "Firestore 数据库可能还没有创建。",
+    "failed-precondition": "Firestore 数据库或索引配置未完成。",
+    "auth/unauthorized-domain": "当前网站域名没有加入 Firebase Authentication 授权域名。",
+    "auth/popup-closed-by-user": "登录弹窗被关闭。",
+    "auth/operation-not-allowed": "Google 登录方式还没有启用。"
+  };
+  return `${code} · ${hints[code] || message}`;
 }
 
 function formatNextReview(timestamp) {
