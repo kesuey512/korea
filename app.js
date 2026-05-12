@@ -219,6 +219,8 @@ function getProgress(word) {
       totalReviews: 0,
       mistakes: 0,
       todayReviewDone: false,
+      lastKnownDay: null,
+      lastReviewDay: null,
       updatedAt: null
     };
   }
@@ -347,8 +349,12 @@ function handleResult(type) {
   progress.updatedAt = Date.now();
 
   if (type === "known") {
-    progress.knownStreak = (progress.knownStreak || 0) + 1;
-    progress.mastered = progress.knownStreak >= 3;
+    if (progress.lastKnownDay !== today) {
+      progress.knownStreak = (progress.knownStreak || 0) + 1;
+      progress.lastKnownDay = today;
+      progress.lastReviewDay = today;
+      progress.mastered = progress.knownStreak >= 3;
+    }
 
     if (progress.stage === -1) {
       progress.stage = 0;
@@ -370,7 +376,10 @@ function handleResult(type) {
       groupPendingSet.delete(currentWord.id);
     }
   } else {
-    progress.knownStreak = 0;
+    if (progress.lastReviewDay !== today) {
+      progress.knownStreak = 0;
+      progress.lastReviewDay = today;
+    }
     progress.mastered = false;
     progress.mistakes = (progress.mistakes || 0) + 1;
     if (mode === "learn" && progress.stage === -1) {
@@ -382,7 +391,7 @@ function handleResult(type) {
       }
       progress.nextReview = tomorrowStart();
     }
-    registerRepeat(currentWord, type === "unknown" ? 2 : 1);
+    registerRepeat(currentWord);
   }
 
   saveProgress();
@@ -504,9 +513,10 @@ function getEmptyTaskMessage() {
   return "当前范围今日新词额度已用完，或没有未学单词。";
 }
 
-function registerRepeat(word, times) {
-  const repeatsLeft = groupRepeatMap.get(word.id) || 0;
-  groupRepeatMap.set(word.id, Math.max(repeatsLeft, times));
+function registerRepeat(word) {
+  if ((groupRepeatMap.get(word.id) || 0) === 0) {
+    groupRepeatMap.set(word.id, 1);
+  }
 }
 
 function updateTaskTabs() {
