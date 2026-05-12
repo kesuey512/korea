@@ -39,7 +39,7 @@ let currentWord = null;
 let currentGroup = [];
 let groupPendingSet = new Set();
 let groupQueue = [];
-let groupRepeatMap = new Map();
+let groupKnownMap = new Map();
 let groupsDone = 0;
 let mode = "learn";
 let activeTask = "new";
@@ -296,7 +296,7 @@ function loadNextGroup(wordPool) {
   }
 
   groupPendingSet = new Set(currentGroup.map((word) => word.id));
-  groupRepeatMap = new Map(currentGroup.map((word) => [word.id, 0]));
+  groupKnownMap = new Map(currentGroup.map((word) => [word.id, 0]));
   groupQueue = shuffle([...currentGroup]);
   renderGroupInfo();
   renderNext();
@@ -368,11 +368,9 @@ function handleResult(type) {
       progress.nextReview = today + daysToMs(INTERVALS[progress.stage]);
     }
 
-    const repeatsLeft = groupRepeatMap.get(currentWord.id) || 0;
-    if (repeatsLeft > 1) {
-      groupRepeatMap.set(currentWord.id, repeatsLeft - 1);
-    } else {
-      groupRepeatMap.set(currentWord.id, 0);
+    const groupKnownCount = (groupKnownMap.get(currentWord.id) || 0) + 1;
+    groupKnownMap.set(currentWord.id, groupKnownCount);
+    if (groupKnownCount >= 2) {
       groupPendingSet.delete(currentWord.id);
     }
   } else {
@@ -391,7 +389,7 @@ function handleResult(type) {
       }
       progress.nextReview = tomorrowStart();
     }
-    registerRepeat(currentWord);
+    groupPendingSet.add(currentWord.id);
   }
 
   saveProgress();
@@ -469,7 +467,7 @@ function renderSearchResults() {
       currentWord = word;
       currentGroup = [word];
       groupPendingSet = new Set([word.id]);
-      groupRepeatMap = new Map([[word.id, 0]]);
+      groupKnownMap = new Map([[word.id, 0]]);
       groupQueue = [];
       els.searchInput.value = "";
       els.searchResults.hidden = true;
@@ -511,12 +509,6 @@ function getEmptyTaskMessage() {
   if (activeTask === "due") return "当前范围没有到期复习。";
   if (activeTask === "today") return "今天新学的单词已复习完，或今天还没有新学单词。";
   return "当前范围今日新词额度已用完，或没有未学单词。";
-}
-
-function registerRepeat(word) {
-  if ((groupRepeatMap.get(word.id) || 0) === 0) {
-    groupRepeatMap.set(word.id, 1);
-  }
 }
 
 function updateTaskTabs() {
