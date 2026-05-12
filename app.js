@@ -632,7 +632,8 @@ async function loadCloudProgress() {
 
   const snapshot = await getDoc(ref);
   if (snapshot.exists()) {
-    const cloudState = snapshot.data().state;
+    const data = snapshot.data();
+    const cloudState = data.stateJson ? JSON.parse(data.stateJson) : data.state;
     if (cloudState) {
       state = mergeState(state, cloudState);
     }
@@ -664,9 +665,9 @@ async function saveCloudProgress() {
   await setDoc(ref, {
     uid: currentUser.uid,
     email: currentUser.email || null,
-    state,
+    stateJson: JSON.stringify(state),
     updatedAt: serverTimestamp()
-  }, { merge: true });
+  });
 
   setSyncMessage("云端同步已保存。", "success");
 }
