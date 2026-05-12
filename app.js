@@ -39,6 +39,7 @@ let currentWord = null;
 let currentGroup = [];
 let groupPendingSet = new Set();
 let groupQueue = [];
+let groupRepeatMap = new Map();
 let groupsDone = 0;
 let mode = "learn";
 let activeTask = "new";
@@ -293,6 +294,7 @@ function loadNextGroup(wordPool) {
   }
 
   groupPendingSet = new Set(currentGroup.map((word) => word.id));
+  groupRepeatMap = new Map(currentGroup.map((word) => [word.id, 0]));
   groupQueue = shuffle([...currentGroup]);
   renderGroupInfo();
   renderNext();
@@ -313,6 +315,7 @@ function renderNext() {
       onGroupComplete();
       return;
     }
+    // Start the next pass only after the current pass has shown every queued word.
     groupQueue = shuffle(currentGroup.filter((word) => groupPendingSet.has(word.id)));
   }
 
@@ -359,7 +362,13 @@ function handleResult(type) {
       progress.nextReview = today + daysToMs(INTERVALS[progress.stage]);
     }
 
-    groupPendingSet.delete(currentWord.id);
+    const repeatsLeft = groupRepeatMap.get(currentWord.id) || 0;
+    if (repeatsLeft > 1) {
+      groupRepeatMap.set(currentWord.id, repeatsLeft - 1);
+    } else {
+      groupRepeatMap.set(currentWord.id, 0);
+      groupPendingSet.delete(currentWord.id);
+    }
   } else {
     progress.knownStreak = 0;
     progress.mastered = false;
@@ -373,7 +382,7 @@ function handleResult(type) {
       }
       progress.nextReview = tomorrowStart();
     }
-    enqueueRepeat(currentWord, type === "unknown" ? 2 : 1);
+    registerRepeat(currentWord, type === "unknown" ? 2 : 1);
   }
 
   saveProgress();
@@ -451,6 +460,7 @@ function renderSearchResults() {
       currentWord = word;
       currentGroup = [word];
       groupPendingSet = new Set([word.id]);
+      groupRepeatMap = new Map([[word.id, 0]]);
       groupQueue = [];
       els.searchInput.value = "";
       els.searchResults.hidden = true;
@@ -494,10 +504,9 @@ function getEmptyTaskMessage() {
   return "当前范围今日新词额度已用完，或没有未学单词。";
 }
 
-function enqueueRepeat(word, times) {
-  for (let i = 0; i < times; i += 1) {
-    groupQueue.push(word);
-  }
+function registerRepeat(word, times) {
+  const repeatsLeft = groupRepeatMap.get(word.id) || 0;
+  groupRepeatMap.set(word.id, Math.max(repeatsLeft, times));
 }
 
 function updateTaskTabs() {
