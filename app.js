@@ -39,7 +39,6 @@ let currentWord = null;
 let currentGroup = [];
 let groupPendingSet = new Set();
 let groupQueue = [];
-let groupKnownMap = new Map();
 let groupsDone = 0;
 let mode = "learn";
 let activeTask = "new";
@@ -296,7 +295,6 @@ function loadNextGroup(wordPool) {
   }
 
   groupPendingSet = new Set(currentGroup.map((word) => word.id));
-  groupKnownMap = new Map(currentGroup.map((word) => [word.id, 0]));
   groupQueue = shuffle([...currentGroup]);
   renderGroupInfo();
   renderNext();
@@ -368,11 +366,7 @@ function handleResult(type) {
       progress.nextReview = today + daysToMs(INTERVALS[progress.stage]);
     }
 
-    const groupKnownCount = (groupKnownMap.get(currentWord.id) || 0) + 1;
-    groupKnownMap.set(currentWord.id, groupKnownCount);
-    if (groupKnownCount >= 2) {
-      groupPendingSet.delete(currentWord.id);
-    }
+    groupPendingSet.delete(currentWord.id);
   } else {
     if (progress.lastReviewDay !== today) {
       progress.knownStreak = 0;
@@ -467,7 +461,6 @@ function renderSearchResults() {
       currentWord = word;
       currentGroup = [word];
       groupPendingSet = new Set([word.id]);
-      groupKnownMap = new Map([[word.id, 0]]);
       groupQueue = [];
       els.searchInput.value = "";
       els.searchResults.hidden = true;
