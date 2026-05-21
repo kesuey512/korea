@@ -253,11 +253,21 @@ function getTodayReviewWords() {
   });
 }
 
-function getNewWords() {
-  const newWords = getFilteredWords().filter((word) => getProgress(word).stage === -1);
+function getNewWordCandidates() {
+  return getFilteredWords().filter((word) => getProgress(word).stage === -1);
+}
+
+function getNewWordLimit() {
   const limit = Number(els.dailyLimit.value);
-  if (!limit) return newWords;
-  return newWords.slice(0, Math.max(limit - getTodayLearnedCount(), 0));
+  if (!limit) return Infinity;
+  return Math.max(limit - getTodayLearnedCount(), 0);
+}
+
+function getNewWords() {
+  const newWords = getNewWordCandidates();
+  const limit = getNewWordLimit();
+  if (limit === Infinity) return newWords;
+  return takeRandom(newWords, limit);
 }
 
 function setActiveTask(task) {
@@ -288,7 +298,7 @@ function startSession() {
 }
 
 function loadNextGroup(wordPool) {
-  currentGroup = wordPool.slice(0, GROUP_SIZE);
+  currentGroup = takeRandom(wordPool, GROUP_SIZE);
   if (currentGroup.length === 0) {
     showTaskDone();
     return;
@@ -515,7 +525,7 @@ function updateTaskTabs() {
     button.classList.toggle("active", activeTask === task);
   });
 
-  els.taskNewBtn.innerText = `学习新词 ${getNewWords().length}`;
+  els.taskNewBtn.innerText = `学习新词 ${Math.min(getNewWordCandidates().length, getNewWordLimit())}`;
   els.taskDueBtn.innerText = `到期复习 ${getReviewWords().length}`;
   els.taskTodayBtn.innerText = `复习今日新词 ${getTodayReviewWords().length}`;
 }
@@ -747,4 +757,8 @@ function shuffle(array) {
     [array[i], array[j]] = [array[j], array[i]];
   }
   return array;
+}
+
+function takeRandom(array, count) {
+  return shuffle([...array]).slice(0, count);
 }
