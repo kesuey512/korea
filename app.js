@@ -65,6 +65,7 @@ const els = {
   reviewCount: $("review-count"),
   masteredCount: $("mastered-count"),
   todayNewCount: $("today-new-count"),
+  hardCount: $("hard-count"),
   modeSelect: $("study-mode"),
   unitSelect: $("unit-select"),
   dailyLimit: $("daily-limit"),
@@ -79,7 +80,8 @@ const els = {
   logoutBtn: $("logout-btn"),
   taskNewBtn: $("task-new-btn"),
   taskDueBtn: $("task-due-btn"),
-  taskTodayBtn: $("task-today-btn")
+  taskTodayBtn: $("task-today-btn"),
+  taskHardBtn: $("task-hard-btn")
 };
 
 $("show-btn").addEventListener("click", showMeaning);
@@ -96,6 +98,7 @@ els.importFile.addEventListener("change", importProgress);
 els.taskNewBtn.addEventListener("click", () => setActiveTask("new"));
 els.taskDueBtn.addEventListener("click", () => setActiveTask("due"));
 els.taskTodayBtn.addEventListener("click", () => setActiveTask("today"));
+els.taskHardBtn.addEventListener("click", () => setActiveTask("hard"));
 els.modeSelect.addEventListener("change", () => startSession());
 els.unitSelect.addEventListener("change", () => startSession());
 els.dailyLimit.addEventListener("change", () => {
@@ -220,6 +223,7 @@ function getProgress(word) {
       todayReviewDone: false,
       lastKnownDay: null,
       lastReviewDay: null,
+      dailyHistory: {},
       updatedAt: null
     };
   }
@@ -238,6 +242,25 @@ function getReviewWords() {
     const progress = getProgress(word);
     return progress.stage !== -1 && progress.nextReview !== null && today >= progress.nextReview;
   });
+}
+
+function getHardWordRate(progress) {
+  const mistakes = progress.mistakes || 0;
+  const totalReviews = progress.totalReviews || 0;
+  if (progress.stage === -1 || totalReviews === 0 || mistakes === 0) return 0;
+  return mistakes / totalReviews;
+}
+
+function getHardWords() {
+  return getFilteredWords()
+    .map((word) => ({
+      word,
+      rate: getHardWordRate(getProgress(word))
+    }))
+    .filter((item) => item.rate > 0)
+    .sort((a, b) => b.rate - a.rate || a.word.id.localeCompare(b.word.id))
+    .slice(0, 30)
+    .map((item) => item.word);
 }
 
 function getTodayLearnedCount() {
@@ -281,6 +304,7 @@ function startSession() {
 
   const dueWords = getReviewWords();
   const todayWords = getTodayReviewWords();
+  const hardWords = getHardWords();
   const newWords = getNewWords();
 
   if (activeTask === "due") {
@@ -289,6 +313,9 @@ function startSession() {
   } else if (activeTask === "today") {
     mode = "today";
     loadNextGroup(todayWords);
+  } else if (activeTask === "hard") {
+    mode = "hard";
+    loadNextGroup(hardWords);
   } else {
     mode = "learn";
     loadNextGroup(newWords);
@@ -351,10 +378,12 @@ function handleResult(type) {
   if (!currentWord) return;
 
   const today = todayStart();
+  const todayKey = formatDateKey(today);
   const progress = getProgress(currentWord);
   progress.lastResult = type;
   progress.totalReviews = (progress.totalReviews || 0) + 1;
   progress.updatedAt = Date.now();
+  recordDailyHistory(progress, todayKey, type);
 
   if (type === "known") {
     if (progress.lastKnownDay !== today) {
@@ -388,7 +417,7 @@ function handleResult(type) {
       progress.nextReview = null;
     } else {
       progress.stage = Math.max(progress.stage, 0);
-      if (mode === "review" && type === "vague" && progress.stage > 0) {
+      if ((mode === "review" || mode === "hard") && type === "vague" && progress.stage > 0) {
         progress.stage -= 1;
       }
       progress.nextReview = tomorrowStart();
@@ -434,6 +463,7 @@ function updateCounts() {
   let learn = 0;
   let review = 0;
   let mastered = 0;
+  let hard = 0;
 
   getFilteredWords().forEach((word) => {
     const progress = getProgress(word);
@@ -442,10 +472,13 @@ function updateCounts() {
     if (progress.stage !== -1 && progress.nextReview !== null && today >= progress.nextReview) review += 1;
   });
 
+  hard = getHardWords().length;
+
   els.learnCount.innerText = learn;
   els.reviewCount.innerText = review;
   els.masteredCount.innerText = mastered;
   els.todayNewCount.innerText = getTodayLearnedCount();
+  els.hardCount.innerText = hard;
   updateTaskTabs();
 }
 
@@ -499,18 +532,21 @@ function renderNextFromSearch(word) {
 function getActiveTaskWords() {
   if (activeTask === "due") return getReviewWords();
   if (activeTask === "today") return getTodayReviewWords();
+  if (activeTask === "hard") return getHardWords();
   return getNewWords();
 }
 
 function getTaskLabel() {
   if (mode === "review") return "到期复习";
   if (mode === "today") return "复习今日新词";
+  if (mode === "hard") return "顽固词";
   return "学习新词";
 }
 
 function getEmptyTaskMessage() {
   if (activeTask === "due") return "当前范围没有到期复习。";
   if (activeTask === "today") return "今天新学的单词已复习完，或今天还没有新学单词。";
+  if (activeTask === "hard") return "当前范围没有顽固词。连续记住后，词会自动离开这个分区。";
   return "当前范围今日新词额度已用完，或没有未学单词。";
 }
 
@@ -518,7 +554,8 @@ function updateTaskTabs() {
   const buttons = {
     new: els.taskNewBtn,
     due: els.taskDueBtn,
-    today: els.taskTodayBtn
+    today: els.taskTodayBtn,
+    hard: els.taskHardBtn
   };
 
   Object.entries(buttons).forEach(([task, button]) => {
@@ -528,6 +565,7 @@ function updateTaskTabs() {
   els.taskNewBtn.innerText = `学习新词 ${Math.min(getNewWordCandidates().length, getNewWordLimit())}`;
   els.taskDueBtn.innerText = `到期复习 ${getReviewWords().length}`;
   els.taskTodayBtn.innerText = `复习今日新词 ${getTodayReviewWords().length}`;
+  els.taskHardBtn.innerText = `顽固词 ${getHardWords().length}`;
 }
 
 function speakCurrent() {
@@ -542,6 +580,24 @@ function saveProgress() {
   state.updatedAt = new Date().toISOString();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   scheduleCloudSave();
+}
+
+function recordDailyHistory(progress, dayKey, result) {
+  progress.dailyHistory ||= {};
+  const day = progress.dailyHistory[dayKey] || {
+    firstResult: result,
+    attempts: 0
+  };
+  day.attempts = (day.attempts || 0) + 1;
+  progress.dailyHistory[dayKey] = day;
+}
+
+function formatDateKey(timestamp) {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function loadProgress() {
