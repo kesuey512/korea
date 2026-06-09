@@ -244,21 +244,49 @@ function getReviewWords() {
   });
 }
 
-function getHardWordRate(progress) {
-  const mistakes = progress.mistakes || 0;
-  const totalReviews = progress.totalReviews || 0;
-  if (progress.stage === -1 || totalReviews === 0 || mistakes === 0) return 0;
-  return mistakes / totalReviews;
+function getAllProgressForWord(word) {
+  return Object.entries(state.progress)
+    .filter(([key]) => key.endsWith(`_${word.id}`))
+    .map(([, progress]) => progress);
+}
+
+function getHardWordStats(word) {
+  const records = getAllProgressForWord(word);
+  const totals = records.reduce(
+    (stats, progress) => {
+      stats.mistakes += progress.mistakes || 0;
+      stats.totalReviews += progress.totalReviews || 0;
+      if (progress.stage !== -1) stats.learned = true;
+      return stats;
+    },
+    { mistakes: 0, totalReviews: 0, learned: false }
+  );
+
+  if (!totals.learned || totals.totalReviews === 0 || totals.mistakes === 0) {
+    return { rate: 0, mistakes: totals.mistakes, totalReviews: totals.totalReviews };
+  }
+
+  return {
+    rate: totals.mistakes / totals.totalReviews,
+    mistakes: totals.mistakes,
+    totalReviews: totals.totalReviews
+  };
 }
 
 function getHardWords() {
-  return getFilteredWords()
+  return words
     .map((word) => ({
       word,
-      rate: getHardWordRate(getProgress(word))
+      stats: getHardWordStats(word)
     }))
-    .filter((item) => item.rate > 0)
-    .sort((a, b) => b.rate - a.rate || a.word.id.localeCompare(b.word.id))
+    .filter((item) => item.stats.rate > 0)
+    .sort(
+      (a, b) =>
+        b.stats.rate - a.stats.rate ||
+        b.stats.mistakes - a.stats.mistakes ||
+        b.stats.totalReviews - a.stats.totalReviews ||
+        a.word.id.localeCompare(b.word.id)
+    )
     .slice(0, 30)
     .map((item) => item.word);
 }
@@ -546,7 +574,7 @@ function getTaskLabel() {
 function getEmptyTaskMessage() {
   if (activeTask === "due") return "当前范围没有到期复习。";
   if (activeTask === "today") return "今天新学的单词已复习完，或今天还没有新学单词。";
-  if (activeTask === "hard") return "当前范围没有顽固词。连续记住后，词会自动离开这个分区。";
+  if (activeTask === "hard") return "现在还没有错过的已复习单词。顽固词会按错误率自动取最高 30 个。";
   return "当前范围今日新词额度已用完，或没有未学单词。";
 }
 
