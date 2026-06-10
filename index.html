@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>韩语背词</title>
-  <link rel="stylesheet" href="./style.css?v=20260610-related1" />
+  <link rel="stylesheet" href="./style.css?v=20260610-sentence1" />
 </head>
 <body>
   <main class="app-shell">
@@ -67,6 +67,22 @@
             <div class="kr" id="kr">---</div>
             <div class="cn" id="cn">---</div>
             <div class="related-words" id="related-words" hidden></div>
+            <div class="sentence-practice" id="sentence-practice" hidden>
+              <label class="sentence-label" for="sentence-input">我的造句</label>
+              <textarea id="sentence-input" rows="2" placeholder="用这个词写一句韩语"></textarea>
+              <div class="sentence-actions">
+                <button id="save-sentence-btn" class="btn-ghost" type="button">保存造句</button>
+                <span id="sentence-msg" class="practice-msg"></span>
+              </div>
+            </div>
+            <div class="copy-practice" id="copy-practice" hidden>
+              <label class="sentence-label" for="copy-input">输入一遍这个单词</label>
+              <input id="copy-input" type="text" autocomplete="off" />
+              <div class="sentence-actions">
+                <button id="copy-submit-btn" class="btn-main" type="button">确认</button>
+                <span id="copy-msg" class="practice-msg"></span>
+              </div>
+            </div>
           </article>
 
           <div class="btn-group">
@@ -132,6 +148,6 @@
     </section>
   </main>
 
-  <script type="module" src="./app.js?v=20260610-related1"></script>
+  <script type="module" src="./app.js?v=20260610-sentence1"></script>
 </body>
 </html>

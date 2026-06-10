@@ -45,6 +45,7 @@ let activeTask = "new";
 let currentUser = null;
 let cloudReady = false;
 let syncTimer = null;
+let awaitingCopyPractice = false;
 
 let state = {
   version: 2,
@@ -61,6 +62,14 @@ const els = {
   kr: $("kr"),
   cn: $("cn"),
   relatedWords: $("related-words"),
+  sentencePractice: $("sentence-practice"),
+  sentenceInput: $("sentence-input"),
+  saveSentenceBtn: $("save-sentence-btn"),
+  sentenceMsg: $("sentence-msg"),
+  copyPractice: $("copy-practice"),
+  copyInput: $("copy-input"),
+  copySubmitBtn: $("copy-submit-btn"),
+  copyMsg: $("copy-msg"),
   info: $("unit-info"),
   learnCount: $("learn-count"),
   reviewCount: $("review-count"),
@@ -93,6 +102,11 @@ $("reset-current-btn").addEventListener("click", resetCurrent);
 $("reset-all-btn").addEventListener("click", resetAll);
 $("speak-btn").addEventListener("click", speakCurrent);
 $("export-btn").addEventListener("click", exportProgress);
+els.saveSentenceBtn.addEventListener("click", saveCurrentSentence);
+els.copySubmitBtn.addEventListener("click", submitCopyPractice);
+els.copyInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") submitCopyPractice();
+});
 els.loginBtn.addEventListener("click", loginWithGoogle);
 els.logoutBtn.addEventListener("click", logout);
 els.importFile.addEventListener("change", importProgress);
@@ -110,7 +124,8 @@ els.dailyLimit.addEventListener("change", () => {
 els.searchInput.addEventListener("input", renderSearchResults);
 
 document.addEventListener("keydown", (event) => {
-  if (event.target.matches("input, select")) return;
+  if (event.target.matches("input, select, textarea")) return;
+  if (awaitingCopyPractice) return;
   if (event.key === " ") {
     event.preventDefault();
     showMeaning();
@@ -456,6 +471,7 @@ function renderNext() {
   }
 
   currentWord = groupQueue.shift();
+  awaitingCopyPractice = false;
   const progress = getProgress(currentWord);
   const stageLabel = progress.stage === -1 ? "新词" : `阶段 ${progress.stage}`;
   const nextReview = formatNextReview(progress.nextReview);
@@ -465,6 +481,13 @@ function renderNext() {
   els.cn.classList.remove("show");
   renderRelatedWords(currentWord);
   els.relatedWords.hidden = true;
+  if (mode === "hard") {
+    renderSentencePractice(currentWord);
+    els.sentencePractice.hidden = true;
+  } else {
+    hideSentencePractice();
+  }
+  hideCopyPractice();
   els.info.innerText = `${currentWord.unit} · ${stageLabel} · 连续记住 ${progress.knownStreak} 次${progress.mastered ? " · 已掌握" : ""}${nextReview}`;
 
   renderGroupInfo();
@@ -475,6 +498,9 @@ function showMeaning() {
   els.cn.classList.add("show");
   if (mode === "hard" && els.relatedWords.innerHTML) {
     els.relatedWords.hidden = false;
+  }
+  if (mode === "hard") {
+    els.sentencePractice.hidden = false;
   }
 }
 
@@ -508,8 +534,66 @@ function renderRelatedWords(word) {
     .join("");
 }
 
+function renderSentencePractice(word) {
+  const progress = getProgress(word);
+  els.sentenceInput.value = progress.exampleSentence || "";
+  els.sentenceMsg.innerText = progress.exampleSentence ? "已保存上次造句" : "";
+  els.sentenceMsg.dataset.type = progress.exampleSentence ? "success" : "";
+}
+
+function hideSentencePractice() {
+  els.sentencePractice.hidden = true;
+  els.sentenceInput.value = "";
+  els.sentenceMsg.innerText = "";
+  els.sentenceMsg.dataset.type = "";
+}
+
+function saveCurrentSentence() {
+  if (!currentWord || mode !== "hard") return;
+  const sentence = els.sentenceInput.value.trim();
+  const progress = getProgress(currentWord);
+  progress.exampleSentence = sentence;
+  progress.updatedAt = Date.now();
+  saveProgress();
+  els.sentenceMsg.innerText = sentence ? "已保存" : "已清空";
+  els.sentenceMsg.dataset.type = "success";
+}
+
+function showCopyPractice() {
+  awaitingCopyPractice = true;
+  els.copyInput.value = "";
+  els.copyMsg.innerText = "";
+  els.copyMsg.dataset.type = "";
+  els.copyPractice.hidden = false;
+  window.setTimeout(() => els.copyInput.focus(), 0);
+}
+
+function hideCopyPractice() {
+  awaitingCopyPractice = false;
+  els.copyPractice.hidden = true;
+  els.copyInput.value = "";
+  els.copyMsg.innerText = "";
+  els.copyMsg.dataset.type = "";
+}
+
+function normalizeCopyValue(value) {
+  return String(value || "").trim().replace(/\s+/g, "");
+}
+
+function submitCopyPractice() {
+  if (!awaitingCopyPractice || !currentWord) return;
+  if (normalizeCopyValue(els.copyInput.value) !== normalizeCopyValue(currentWord.kr)) {
+    els.copyMsg.innerText = "再输入一次，必须和当前单词一致";
+    els.copyMsg.dataset.type = "danger";
+    return;
+  }
+  hideCopyPractice();
+  renderNext();
+}
+
 function handleResult(type) {
   if (!currentWord) return;
+  if (awaitingCopyPractice) return;
 
   const today = todayStart();
   const todayKey = formatDateKey(today);
@@ -560,6 +644,11 @@ function handleResult(type) {
   }
 
   saveProgress();
+  if (mode === "review" && type !== "known") {
+    showMeaning();
+    showCopyPractice();
+    return;
+  }
   renderNext();
 }
 
@@ -570,6 +659,8 @@ function onGroupComplete() {
   els.cn.classList.add("show");
   els.relatedWords.hidden = true;
   els.relatedWords.innerHTML = "";
+  hideSentencePractice();
+  hideCopyPractice();
   els.info.innerText = "";
   els.groupProgress.innerText = "";
 
@@ -590,6 +681,8 @@ function showTaskDone() {
   els.cn.classList.add("show");
   els.relatedWords.hidden = true;
   els.relatedWords.innerHTML = "";
+  hideSentencePractice();
+  hideCopyPractice();
   els.info.innerText = "";
   els.groupInfo.innerText = "";
   els.groupProgress.innerText = "";
@@ -664,6 +757,8 @@ function renderNextFromSearch(word) {
   els.cn.classList.add("show");
   els.relatedWords.hidden = true;
   els.relatedWords.innerHTML = "";
+  hideSentencePractice();
+  hideCopyPractice();
   els.info.innerText = `${word.unit} · ${progress.stage === -1 ? "新词" : `阶段 ${progress.stage}`}`;
   els.groupInfo.innerText = "搜索预览";
   els.groupProgress.innerText = "";

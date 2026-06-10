@@ -391,6 +391,65 @@ button {
   line-height: 1.35;
 }
 
+.sentence-practice,
+.copy-practice {
+  display: grid;
+  gap: 8px;
+  max-width: 620px;
+  width: 100%;
+  margin: 16px auto 0;
+  text-align: left;
+}
+
+.sentence-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sentence-practice textarea,
+.copy-practice input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  padding: 9px 10px;
+  outline: none;
+  resize: vertical;
+}
+
+.copy-practice input {
+  height: 40px;
+  font-size: 18px;
+}
+
+.sentence-practice textarea:focus,
+.copy-practice input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(49, 87, 213, 0.14);
+}
+
+.sentence-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.practice-msg {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.practice-msg[data-type="success"] {
+  color: var(--success);
+}
+
+.practice-msg[data-type="danger"] {
+  color: var(--danger);
+}
+
 .btn-group,
 .reset-controls {
   display: grid;
