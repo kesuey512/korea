@@ -60,6 +60,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   kr: $("kr"),
   cn: $("cn"),
+  relatedWords: $("related-words"),
   info: $("unit-info"),
   learnCount: $("learn-count"),
   reviewCount: $("review-count"),
@@ -291,6 +292,76 @@ function getHardWords() {
     .map((item) => item.word);
 }
 
+function normalizeText(value) {
+  return String(value || "").toLowerCase().replace(/[，,；;。！？!?（）()、\s]/g, "");
+}
+
+function getTextChunks(value, size = 2) {
+  const text = normalizeText(value);
+  if (!text) return [];
+  if (text.length <= size) return [text];
+  const chunks = [];
+  for (let index = 0; index <= text.length - size; index += 1) {
+    chunks.push(text.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function getOverlapScore(source, target) {
+  const sourceChunks = new Set(getTextChunks(source));
+  const targetChunks = new Set(getTextChunks(target));
+  if (sourceChunks.size === 0 || targetChunks.size === 0) return 0;
+  let overlap = 0;
+  sourceChunks.forEach((chunk) => {
+    if (targetChunks.has(chunk)) overlap += 1;
+  });
+  return overlap / Math.max(sourceChunks.size, targetChunks.size);
+}
+
+function getRelatedWordScore(source, target) {
+  if (source.id === target.id) return 0;
+  const krScore = getOverlapScore(source.kr, target.kr);
+  const cnScore = getOverlapScore(source.cn, target.cn);
+  const sameUnitBonus = source.unit === target.unit ? 0.08 : 0;
+  const samePosBonus = source.pos === target.pos ? 0.05 : 0;
+  return krScore * 0.58 + cnScore * 0.32 + sameUnitBonus + samePosBonus;
+}
+
+function resolveRelatedWords(values) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((value) => {
+      if (typeof value === "object" && value) return value;
+      return words.find((word) => word.id === value || word.kr === value);
+    })
+    .filter(Boolean);
+}
+
+function getAutoConfusingWords(word) {
+  return words
+    .map((candidate) => ({
+      word: candidate,
+      score: getRelatedWordScore(word, candidate)
+    }))
+    .filter((item) => item.score >= 0.2)
+    .sort((a, b) => b.score - a.score || a.word.id.localeCompare(b.word.id))
+    .slice(0, 5)
+    .map((item) => item.word);
+}
+
+function getRelatedWordGroups(word) {
+  const synonyms = resolveRelatedWords(word.synonyms);
+  const antonyms = resolveRelatedWords(word.antonyms);
+  const manualSimilar = resolveRelatedWords(word.similar);
+  const manualIds = new Set([...synonyms, ...antonyms, ...manualSimilar].map((item) => item.id || item.kr));
+  const autoSimilar = getAutoConfusingWords(word).filter((item) => !manualIds.has(item.id));
+  return [
+    { title: "近义词", items: synonyms },
+    { title: "反义词", items: antonyms },
+    { title: "易混淆词", items: [...manualSimilar, ...autoSimilar].slice(0, 5) }
+  ].filter((group) => group.items.length > 0);
+}
+
 function getTodayLearnedCount() {
   const today = todayStart();
   return getFilteredWords().filter((word) => getProgress(word).learnedDay === today).length;
@@ -392,6 +463,8 @@ function renderNext() {
   els.kr.innerText = currentWord.kr;
   els.cn.innerText = `[${currentWord.pos}] ${currentWord.cn}`;
   els.cn.classList.remove("show");
+  renderRelatedWords(currentWord);
+  els.relatedWords.hidden = true;
   els.info.innerText = `${currentWord.unit} · ${stageLabel} · 连续记住 ${progress.knownStreak} 次${progress.mastered ? " · 已掌握" : ""}${nextReview}`;
 
   renderGroupInfo();
@@ -400,6 +473,39 @@ function renderNext() {
 
 function showMeaning() {
   els.cn.classList.add("show");
+  if (mode === "hard" && els.relatedWords.innerHTML) {
+    els.relatedWords.hidden = false;
+  }
+}
+
+function renderRelatedWords(word) {
+  els.relatedWords.innerHTML = "";
+  if (mode !== "hard") return;
+
+  const groups = getRelatedWordGroups(word);
+  if (groups.length === 0) return;
+
+  els.relatedWords.innerHTML = groups
+    .map(
+      (group) => `
+        <section class="related-section">
+          <div class="related-title">${escapeHtml(group.title)}</div>
+          <div class="related-list">
+            ${group.items
+              .map(
+                (item) => `
+                  <div class="related-chip">
+                    <strong>${escapeHtml(item.kr)}</strong>
+                    <span>${escapeHtml(item.cn || "")}</span>
+                  </div>
+                `
+              )
+              .join("")}
+          </div>
+        </section>
+      `
+    )
+    .join("");
 }
 
 function handleResult(type) {
@@ -462,6 +568,8 @@ function onGroupComplete() {
   els.kr.innerText = "完成";
   els.cn.innerText = `第 ${groupsDone} 组完成`;
   els.cn.classList.add("show");
+  els.relatedWords.hidden = true;
+  els.relatedWords.innerHTML = "";
   els.info.innerText = "";
   els.groupProgress.innerText = "";
 
@@ -480,6 +588,8 @@ function showTaskDone() {
   els.kr.innerText = "当前任务完成";
   els.cn.innerText = getEmptyTaskMessage();
   els.cn.classList.add("show");
+  els.relatedWords.hidden = true;
+  els.relatedWords.innerHTML = "";
   els.info.innerText = "";
   els.groupInfo.innerText = "";
   els.groupProgress.innerText = "";
@@ -552,6 +662,8 @@ function renderNextFromSearch(word) {
   els.kr.innerText = word.kr;
   els.cn.innerText = `[${word.pos}] ${word.cn}`;
   els.cn.classList.add("show");
+  els.relatedWords.hidden = true;
+  els.relatedWords.innerHTML = "";
   els.info.innerText = `${word.unit} · ${progress.stage === -1 ? "新词" : `阶段 ${progress.stage}`}`;
   els.groupInfo.innerText = "搜索预览";
   els.groupProgress.innerText = "";
