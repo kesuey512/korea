@@ -349,6 +349,22 @@ function getOverlapScore(source, target) {
   return overlap / Math.max(sourceChunks.size, targetChunks.size);
 }
 
+function getCharacterOverlapScore(source, target) {
+  const sourceChars = new Set(normalizeText(source));
+  const targetChars = new Set(normalizeText(target));
+  if (sourceChars.size === 0 || targetChars.size === 0) return 0;
+  let overlap = 0;
+  sourceChars.forEach((char) => {
+    if (targetChars.has(char)) overlap += 1;
+  });
+  return overlap / Math.max(sourceChars.size, targetChars.size);
+}
+
+function hasSimilarMeaning(source, target) {
+  if (!normalizeText(target.cn) || normalizeText(source.cn) === normalizeText(target.cn)) return true;
+  return getOverlapScore(source.cn, target.cn) >= 0.3 || getCharacterOverlapScore(source.cn, target.cn) >= 0.45;
+}
+
 function getRelatedWordScore(source, target) {
   if (source.id === target.id) return 0;
   const krScore = getOverlapScore(source.kr, target.kr);
@@ -360,12 +376,13 @@ function getRelatedWordScore(source, target) {
 
 function getMeaningDistractorScore(source, target) {
   if (source.id === target.id) return 0;
-  if (!normalizeText(target.cn) || normalizeText(source.cn) === normalizeText(target.cn)) return 0;
-  const cnScore = getOverlapScore(source.cn, target.cn);
-  const krScore = getOverlapScore(source.kr, target.kr);
-  const sameUnitBonus = source.unit === target.unit ? 0.12 : 0;
-  const samePosBonus = source.pos === target.pos ? 0.16 : 0;
-  return cnScore * 0.52 + krScore * 0.2 + sameUnitBonus + samePosBonus;
+  if (hasSimilarMeaning(source, target)) return 0;
+  const krChunkScore = getOverlapScore(source.kr, target.kr);
+  const krCharScore = getCharacterOverlapScore(source.kr, target.kr);
+  if (krChunkScore === 0 && krCharScore < 0.35) return 0;
+  const sameUnitBonus = source.unit === target.unit ? 0.08 : 0;
+  const samePosBonus = source.pos === target.pos ? 0.12 : 0;
+  return krChunkScore * 0.52 + krCharScore * 0.28 + samePosBonus + sameUnitBonus;
 }
 
 function getQuizOptions(word) {
@@ -385,7 +402,7 @@ function getQuizOptions(word) {
     .map((item) => item.word);
 
   const fallbackDistractors = shuffle(
-    words.filter((candidate) => candidate.id !== word.id && normalizeText(candidate.cn) !== normalizeText(word.cn))
+    words.filter((candidate) => candidate.id !== word.id && !hasSimilarMeaning(word, candidate))
   );
   const options = [correct];
 
