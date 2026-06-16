@@ -46,6 +46,7 @@ let currentUser = null;
 let cloudReady = false;
 let syncTimer = null;
 let awaitingCopyPractice = false;
+let quizLocked = false;
 
 let state = {
   version: 2,
@@ -61,6 +62,8 @@ const $ = (id) => document.getElementById(id);
 const els = {
   kr: $("kr"),
   cn: $("cn"),
+  quizOptions: $("quiz-options"),
+  quizFeedback: $("quiz-feedback"),
   relatedWords: $("related-words"),
   sentencePractice: $("sentence-practice"),
   sentenceInput: $("sentence-input"),
@@ -76,6 +79,7 @@ const els = {
   masteredCount: $("mastered-count"),
   todayNewCount: $("today-new-count"),
   hardCount: $("hard-count"),
+  practiceMode: $("practice-mode"),
   modeSelect: $("study-mode"),
   unitSelect: $("unit-select"),
   dailyLimit: $("daily-limit"),
@@ -88,6 +92,8 @@ const els = {
   importFile: $("import-file"),
   loginBtn: $("login-btn"),
   logoutBtn: $("logout-btn"),
+  revealRow: $("reveal-row"),
+  resultRow: $("result-row"),
   taskNewBtn: $("task-new-btn"),
   taskDueBtn: $("task-due-btn"),
   taskTodayBtn: $("task-today-btn"),
@@ -114,6 +120,7 @@ els.taskNewBtn.addEventListener("click", () => setActiveTask("new"));
 els.taskDueBtn.addEventListener("click", () => setActiveTask("due"));
 els.taskTodayBtn.addEventListener("click", () => setActiveTask("today"));
 els.taskHardBtn.addEventListener("click", () => setActiveTask("hard"));
+els.practiceMode.addEventListener("change", () => startSession());
 els.modeSelect.addEventListener("change", () => startSession());
 els.unitSelect.addEventListener("change", () => startSession());
 els.dailyLimit.addEventListener("change", () => {
@@ -126,6 +133,15 @@ els.searchInput.addEventListener("input", renderSearchResults);
 document.addEventListener("keydown", (event) => {
   if (event.target.matches("input, select, textarea")) return;
   if (awaitingCopyPractice) return;
+  if (isChoicePractice()) {
+    const choiceIndex = Number(event.key) - 1;
+    if (choiceIndex >= 0 && choiceIndex <= 3) {
+      event.preventDefault();
+      selectQuizOption(choiceIndex);
+    }
+    if (event.key.toLowerCase() === "p") speakCurrent();
+    return;
+  }
   if (event.key === " ") {
     event.preventDefault();
     showMeaning();
@@ -342,6 +358,56 @@ function getRelatedWordScore(source, target) {
   return krScore * 0.58 + cnScore * 0.32 + sameUnitBonus + samePosBonus;
 }
 
+function getMeaningDistractorScore(source, target) {
+  if (source.id === target.id) return 0;
+  if (!normalizeText(target.cn) || normalizeText(source.cn) === normalizeText(target.cn)) return 0;
+  const cnScore = getOverlapScore(source.cn, target.cn);
+  const krScore = getOverlapScore(source.kr, target.kr);
+  const sameUnitBonus = source.unit === target.unit ? 0.12 : 0;
+  const samePosBonus = source.pos === target.pos ? 0.16 : 0;
+  return cnScore * 0.52 + krScore * 0.2 + sameUnitBonus + samePosBonus;
+}
+
+function getQuizOptions(word) {
+  const correct = {
+    word,
+    text: formatChoiceText(word),
+    correct: true
+  };
+  const usedMeanings = new Set([normalizeText(word.cn)]);
+  const rankedDistractors = words
+    .map((candidate) => ({
+      word: candidate,
+      score: getMeaningDistractorScore(word, candidate)
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.word.id.localeCompare(b.word.id))
+    .map((item) => item.word);
+
+  const fallbackDistractors = shuffle(
+    words.filter((candidate) => candidate.id !== word.id && normalizeText(candidate.cn) !== normalizeText(word.cn))
+  );
+  const options = [correct];
+
+  [...rankedDistractors, ...fallbackDistractors].forEach((candidate) => {
+    if (options.length >= 4) return;
+    const key = normalizeText(candidate.cn);
+    if (!key || usedMeanings.has(key)) return;
+    usedMeanings.add(key);
+    options.push({
+      word: candidate,
+      text: formatChoiceText(candidate),
+      correct: false
+    });
+  });
+
+  return shuffle(options);
+}
+
+function formatChoiceText(word) {
+  return `[${word.pos}] ${word.cn}`;
+}
+
 function resolveRelatedWords(values) {
   if (!Array.isArray(values)) return [];
   return values
@@ -472,6 +538,7 @@ function renderNext() {
 
   currentWord = groupQueue.shift();
   awaitingCopyPractice = false;
+  quizLocked = false;
   const progress = getProgress(currentWord);
   const stageLabel = progress.stage === -1 ? "新词" : `阶段 ${progress.stage}`;
   const nextReview = formatNextReview(progress.nextReview);
@@ -479,6 +546,11 @@ function renderNext() {
   els.kr.innerText = currentWord.kr;
   els.cn.innerText = `[${currentWord.pos}] ${currentWord.cn}`;
   els.cn.classList.remove("show");
+  hideQuizOptions();
+  renderPracticeControls();
+  if (isChoicePractice()) {
+    renderQuizOptions(currentWord);
+  }
   renderRelatedWords(currentWord);
   els.relatedWords.hidden = true;
   if (mode === "hard") {
@@ -502,6 +574,67 @@ function showMeaning() {
   if (mode === "hard") {
     els.sentencePractice.hidden = false;
   }
+}
+
+function isChoicePractice() {
+  return els.practiceMode.value === "choice";
+}
+
+function renderPracticeControls() {
+  const choice = isChoicePractice();
+  els.revealRow.hidden = choice;
+  els.resultRow.hidden = choice;
+  els.quizOptions.hidden = !choice;
+}
+
+function renderQuizOptions(word) {
+  const options = getQuizOptions(word);
+  els.quizOptions.innerHTML = "";
+  els.quizFeedback.innerText = "";
+  els.quizFeedback.hidden = true;
+
+  options.forEach((option, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "quiz-option";
+    button.dataset.correct = String(option.correct);
+    button.innerHTML = `<span>${index + 1}</span><strong>${escapeHtml(option.text)}</strong>`;
+    button.addEventListener("click", () => selectQuizOption(index));
+    els.quizOptions.appendChild(button);
+  });
+
+  els.quizOptions.hidden = false;
+}
+
+function hideQuizOptions() {
+  els.quizOptions.innerHTML = "";
+  els.quizOptions.hidden = true;
+  els.quizFeedback.innerText = "";
+  els.quizFeedback.hidden = true;
+}
+
+function selectQuizOption(index) {
+  if (!currentWord || !isChoicePractice() || quizLocked) return;
+  const optionButtons = [...els.quizOptions.querySelectorAll(".quiz-option")];
+  const selected = optionButtons[index];
+  if (!selected) return;
+
+  quizLocked = true;
+  const isCorrect = selected.dataset.correct === "true";
+  optionButtons.forEach((button) => {
+    button.disabled = true;
+    if (button.dataset.correct === "true") button.classList.add("correct");
+  });
+
+  selected.classList.add(isCorrect ? "selected-correct" : "selected-wrong");
+  els.cn.classList.add("show");
+  els.quizFeedback.innerText = isCorrect ? "选对了" : "选错了，已按忘记记录";
+  els.quizFeedback.dataset.type = isCorrect ? "success" : "danger";
+  els.quizFeedback.hidden = false;
+
+  window.setTimeout(() => {
+    handleResult(isCorrect ? "known" : "unknown");
+  }, isCorrect ? 260 : 850);
 }
 
 function renderRelatedWords(word) {
@@ -755,6 +888,9 @@ function renderNextFromSearch(word) {
   els.kr.innerText = word.kr;
   els.cn.innerText = `[${word.pos}] ${word.cn}`;
   els.cn.classList.add("show");
+  hideQuizOptions();
+  els.revealRow.hidden = false;
+  els.resultRow.hidden = false;
   els.relatedWords.hidden = true;
   els.relatedWords.innerHTML = "";
   hideSentencePractice();

@@ -66,6 +66,8 @@
           <article class="word-card" aria-live="polite">
             <div class="kr" id="kr">---</div>
             <div class="cn" id="cn">---</div>
+            <div class="quiz-options" id="quiz-options" hidden></div>
+            <div class="quiz-feedback" id="quiz-feedback" hidden></div>
             <div class="related-words" id="related-words" hidden></div>
             <div class="sentence-practice" id="sentence-practice" hidden>
               <label class="sentence-label" for="sentence-input">我的造句</label>
@@ -86,11 +88,11 @@
           </article>
 
           <div class="btn-group">
-            <div class="row">
+            <div class="row" id="reveal-row">
               <button class="btn-main" id="speak-btn" type="button">发音</button>
               <button class="btn-main" id="show-btn" type="button">查看翻译</button>
             </div>
-            <div class="row">
+            <div class="row" id="result-row">
               <button class="btn-remember" id="known-btn" type="button">记住</button>
               <button class="btn-vague" id="vague-btn" type="button">模糊</button>
               <button class="btn-forget" id="unknown-btn" type="button">忘记</button>
@@ -100,6 +102,14 @@
 
         <aside class="control-area">
           <div class="study-controls">
+            <label class="control-group" for="practice-mode">
+              <span>练习方式</span>
+              <select id="practice-mode">
+                <option value="recall">先想再看翻译</option>
+                <option value="choice">韩语选四个中文</option>
+              </select>
+            </label>
+
             <label class="control-group" for="study-mode">
               <span>背诵范围</span>
               <select id="study-mode">
@@ -148,6 +158,6 @@
     </section>
   </main>
 
-  <script type="module" src="./app.js?v=20260610-sentence1"></script>
+  <script type="module" src="./app.js?v=20260616-choice1"></script>
 </body>
 </html>
