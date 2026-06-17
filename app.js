@@ -92,6 +92,7 @@ const els = {
   importFile: $("import-file"),
   loginBtn: $("login-btn"),
   logoutBtn: $("logout-btn"),
+  showBtn: $("show-btn"),
   revealRow: $("reveal-row"),
   resultRow: $("result-row"),
   taskNewBtn: $("task-new-btn"),
@@ -599,7 +600,8 @@ function isChoicePractice() {
 
 function renderPracticeControls() {
   const choice = isChoicePractice();
-  els.revealRow.hidden = choice;
+  els.revealRow.hidden = false;
+  els.showBtn.hidden = choice;
   els.resultRow.hidden = choice;
   els.quizOptions.hidden = !choice;
 }
@@ -650,7 +652,7 @@ function selectQuizOption(index) {
   els.quizFeedback.hidden = false;
 
   window.setTimeout(() => {
-    handleResult(isCorrect ? "known" : "unknown");
+    handleResult(isCorrect ? "known" : "unknown", { skipCopyPractice: true });
   }, isCorrect ? 260 : 850);
 }
 
@@ -741,7 +743,7 @@ function submitCopyPractice() {
   renderNext();
 }
 
-function handleResult(type) {
+function handleResult(type, options = {}) {
   if (!currentWord) return;
   if (awaitingCopyPractice) return;
 
@@ -794,7 +796,7 @@ function handleResult(type) {
   }
 
   saveProgress();
-  if (mode === "review" && type !== "known") {
+  if (mode === "review" && type !== "known" && !options.skipCopyPractice) {
     showMeaning();
     showCopyPractice();
     return;
@@ -907,6 +909,7 @@ function renderNextFromSearch(word) {
   els.cn.classList.add("show");
   hideQuizOptions();
   els.revealRow.hidden = false;
+  els.showBtn.hidden = false;
   els.resultRow.hidden = false;
   els.relatedWords.hidden = true;
   els.relatedWords.innerHTML = "";
