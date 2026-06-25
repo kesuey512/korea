@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>韩语背词</title>
-  <link rel="stylesheet" href="./style.css?v=20260617-choice4" />
+  <link rel="stylesheet" href="./style.css?v=20260625-choice-default" />
 </head>
 <body>
   <main class="app-shell">
@@ -104,9 +104,9 @@
           <div class="study-controls">
             <label class="control-group" for="practice-mode">
               <span>练习方式</span>
-              <select id="practice-mode">
+              <select id="practice-mode" autocomplete="off">
+                <option value="choice" selected>韩语选四个中文</option>
                 <option value="recall">先想再看翻译</option>
-                <option value="choice">韩语选四个中文</option>
               </select>
             </label>
 
@@ -158,6 +158,6 @@
     </section>
   </main>
 
-  <script type="module" src="./app.js?v=20260617-choice4"></script>
+  <script type="module" src="./app.js?v=20260625-choice-default"></script>
 </body>
 </html>

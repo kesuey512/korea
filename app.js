@@ -18,6 +18,7 @@ const STORAGE_KEY = "korea_vocab_progress_v2";
 const LEGACY_STORAGE_KEY = "韩语背词_progress";
 const INTERVALS = [1, 2, 4, 7, 15, 30];
 const GROUP_SIZE = 10;
+const DEFAULT_PRACTICE_MODE = "choice";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB50lA92DSngs6y98PgK1thovNM4liPycU",
@@ -163,6 +164,7 @@ async function load() {
     words = await response.json();
     initUnits();
     loadProgress();
+    setDefaultPracticeMode();
     els.dailyLimit.value = String(state.settings.dailyLimit ?? 20);
     startSession();
     setSyncMessage("进度保存在本机。登录 Google 后会自动同步到云端。", "info");
@@ -598,6 +600,10 @@ function isChoicePractice() {
   return els.practiceMode.value === "choice";
 }
 
+function setDefaultPracticeMode() {
+  els.practiceMode.value = DEFAULT_PRACTICE_MODE;
+}
+
 function renderPracticeControls() {
   const choice = isChoicePractice();
   els.revealRow.hidden = false;
@@ -904,13 +910,18 @@ function renderSearchResults() {
 function renderNextFromSearch(word) {
   const progress = getProgress(word);
   currentWord = word;
+  awaitingCopyPractice = false;
+  quizLocked = false;
   els.kr.innerText = word.kr;
   els.cn.innerText = `[${word.pos}] ${word.cn}`;
-  els.cn.classList.add("show");
+  els.cn.classList.remove("show");
   hideQuizOptions();
-  els.revealRow.hidden = false;
-  els.showBtn.hidden = false;
-  els.resultRow.hidden = false;
+  renderPracticeControls();
+  if (isChoicePractice()) {
+    renderQuizOptions(word);
+  } else {
+    els.cn.classList.add("show");
+  }
   els.relatedWords.hidden = true;
   els.relatedWords.innerHTML = "";
   hideSentencePractice();
