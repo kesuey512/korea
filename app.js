@@ -11,7 +11,7 @@ import {
   getDoc,
   getFirestore,
   serverTimestamp,
-  setDoc
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const STORAGE_KEY = "korea_vocab_progress_v2";
@@ -19,6 +19,9 @@ const LEGACY_STORAGE_KEY = "韩语背词_progress";
 const INTERVALS = [1, 2, 4, 7, 15, 30];
 const GROUP_SIZE = 10;
 const DEFAULT_PRACTICE_MODE = "choice";
+const CLOUD_MANIFEST_DOC_ID = "progress-manifest";
+const CLOUD_CHUNK_DOC_PREFIX = "progress-chunk-";
+const CLOUD_CHUNK_MAX_BYTES = 400000;
 
 const firebaseConfig = {
   apiKey: "AIzaSyB50lA92DSngs6y98PgK1thovNM4liPycU",
@@ -45,6 +48,7 @@ let mode = "learn";
 let activeTask = "new";
 let currentUser = null;
 let cloudReady = false;
+let cloudChunkCount = 0;
 let syncTimer = null;
 let awaitingCopyPractice = false;
 let quizLocked = false;
@@ -177,6 +181,7 @@ function initAuth() {
   onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     cloudReady = false;
+    cloudChunkCount = 0;
     els.loginBtn.hidden = Boolean(user);
     els.logoutBtn.hidden = !user;
 
@@ -1093,16 +1098,35 @@ async function logout() {
   }
 }
 
-function getCloudDocRef() {
+function getLegacyCloudDocRef() {
   if (!currentUser) return null;
   return doc(db, "users", currentUser.uid, "vocab", "progress");
 }
 
-async function loadCloudProgress() {
-  const ref = getCloudDocRef();
-  if (!ref) return;
+function getCloudManifestRef() {
+  if (!currentUser) return null;
+  return doc(db, "users", currentUser.uid, "vocab", CLOUD_MANIFEST_DOC_ID);
+}
 
-  const snapshot = await getDoc(ref);
+function getCloudChunkRef(index) {
+  if (!currentUser) return null;
+  const chunkId = `${CLOUD_CHUNK_DOC_PREFIX}${String(index).padStart(3, "0")}`;
+  return doc(db, "users", currentUser.uid, "vocab", chunkId);
+}
+
+async function loadCloudProgress() {
+  if (!currentUser) return;
+
+  const chunkedState = await loadChunkedCloudState();
+  if (chunkedState) {
+    state = mergeState(state, chunkedState);
+    await saveCloudProgress();
+    return;
+  }
+
+  // Backward compatibility: read the original single-document format once,
+  // then save it into the chunked format below.
+  const snapshot = await getDoc(getLegacyCloudDocRef());
   if (snapshot.exists()) {
     const data = snapshot.data();
     const cloudState = data.stateJson ? JSON.parse(data.stateJson) : data.state;
@@ -1112,6 +1136,35 @@ async function loadCloudProgress() {
   }
 
   await saveCloudProgress();
+}
+
+async function loadChunkedCloudState() {
+  const manifestSnapshot = await getDoc(getCloudManifestRef());
+  if (!manifestSnapshot.exists()) return null;
+
+  const manifest = manifestSnapshot.data();
+  const chunkCount = Number(manifest.chunkCount) || 0;
+  cloudChunkCount = chunkCount;
+  const chunkSnapshots = await Promise.all(
+    Array.from({ length: chunkCount }, (_, index) => getDoc(getCloudChunkRef(index)))
+  );
+  const progress = {};
+
+  chunkSnapshots.forEach((snapshot, index) => {
+    if (!snapshot.exists()) {
+      throw new Error(`云端进度分片 ${index} 缺失`);
+    }
+    const chunkData = snapshot.data();
+    const chunkProgress = chunkData.progressJson ? JSON.parse(chunkData.progressJson) : {};
+    Object.assign(progress, chunkProgress);
+  });
+
+  return {
+    version: manifest.stateVersion || 2,
+    updatedAt: manifest.stateUpdatedAt || null,
+    settings: manifest.settings || { dailyLimit: 20 },
+    progress
+  };
 }
 
 function scheduleCloudSave() {
@@ -1131,17 +1184,71 @@ async function flushCloudSave() {
 }
 
 async function saveCloudProgress() {
-  const ref = getCloudDocRef();
-  if (!ref) return;
+  if (!currentUser) return;
 
-  await setDoc(ref, {
+  const manifestRef = getCloudManifestRef();
+  const chunks = splitProgressIntoChunks(state.progress);
+  const batch = writeBatch(db);
+
+  batch.set(manifestRef, {
     uid: currentUser.uid,
     email: currentUser.email || null,
-    stateJson: JSON.stringify(state),
+    formatVersion: 1,
+    stateVersion: state.version || 2,
+    stateUpdatedAt: state.updatedAt || null,
+    settings: state.settings || { dailyLimit: 20 },
+    chunkCount: chunks.length,
     updatedAt: serverTimestamp()
   });
 
-  setSyncMessage("云端同步已保存。", "success");
+  chunks.forEach((chunk, index) => {
+    batch.set(getCloudChunkRef(index), {
+      uid: currentUser.uid,
+      index,
+      progressJson: JSON.stringify(chunk),
+      updatedAt: serverTimestamp()
+    });
+  });
+
+  for (let index = chunks.length; index < cloudChunkCount; index += 1) {
+    batch.delete(getCloudChunkRef(index));
+  }
+
+  await batch.commit();
+  cloudChunkCount = chunks.length;
+
+  setSyncMessage(`云端同步已保存（${chunks.length} 个分片）。`, "success");
+}
+
+function splitProgressIntoChunks(progress) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  let chunk = {};
+  let chunkBytes = 2;
+
+  Object.entries(progress || {}).forEach(([key, value]) => {
+    const entryJson = `${JSON.stringify(key)}:${JSON.stringify(value)}`;
+    const entryBytes = encoder.encode(entryJson).length;
+    const separatorBytes = Object.keys(chunk).length > 0 ? 1 : 0;
+
+    if (chunkBytes + separatorBytes + entryBytes > CLOUD_CHUNK_MAX_BYTES) {
+      if (Object.keys(chunk).length === 0) {
+        throw new Error(`单条进度记录过大，无法同步：${key}`);
+      }
+      chunks.push(chunk);
+      chunk = {};
+      chunkBytes = 2;
+      if (chunkBytes + entryBytes > CLOUD_CHUNK_MAX_BYTES) {
+        throw new Error(`单条进度记录过大，无法同步：${key}`);
+      }
+    }
+
+    chunk[key] = value;
+    chunkBytes += (Object.keys(chunk).length > 1 ? 1 : 0) + entryBytes;
+  });
+
+  if (Object.keys(chunk).length > 0) chunks.push(chunk);
+  return chunks;
 }
 
 function resetCurrent() {
